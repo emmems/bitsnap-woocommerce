@@ -9,7 +9,7 @@ namespace Bitsnap\WooCommerce\Mapping;
 
 use Bitsnap\WooCommerce\Support\Money;
 
-if ( ! defined( 'ABSPATH' ) && ! defined( 'BITSNAP_WC_TESTING' ) ) {
+if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 

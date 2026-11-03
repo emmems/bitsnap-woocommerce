@@ -7,7 +7,7 @@
 
 namespace Bitsnap\WooCommerce\Mapping;
 
-if ( ! defined( 'ABSPATH' ) && ! defined( 'BITSNAP_WC_TESTING' ) ) {
+if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 

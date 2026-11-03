@@ -107,8 +107,10 @@ final class PaymentStarter {
 			}
 		}
 
-		$url = isset( $response['url'] ) && is_string( $response['url'] ) ? $response['url'] : '';
-		if ( '' === $url || ! wp_http_validate_url( $url ) ) {
+		// Scheme and host only. wp_http_validate_url() also resolves DNS and rejects private addresses, which breaks local Bitsnap installs.
+		$url   = isset( $response['url'] ) && is_string( $response['url'] ) ? $response['url'] : '';
+		$parts = wp_parse_url( $url );
+		if ( ! is_array( $parts ) || empty( $parts['host'] ) || ! isset( $parts['scheme'] ) || ! in_array( $parts['scheme'], array( 'https', 'http' ), true ) ) {
 			throw new ApiException( 'Bitsnap did not return a payment URL.', 200, 'internal' );
 		}
 

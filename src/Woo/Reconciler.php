@@ -24,9 +24,14 @@ final class Reconciler {
 	public const GROUP = 'bitsnap-for-woocommerce';
 
 	/**
-	 * Orders per run.
+	 * Orders checked per run.
 	 */
 	public const BATCH = 20;
+
+	/**
+	 * Candidate orders read per run before the meta check.
+	 */
+	public const SCAN = 100;
 
 	/**
 	 * Wait before the first check, in seconds.
@@ -101,6 +106,9 @@ final class Reconciler {
 	/**
 	 * Job body.
 	 *
+	 * The query uses only arguments both order stores (HPOS and posts) support. Meta is checked in PHP,
+	 * because `meta_query` is not available with the legacy posts storage.
+	 *
 	 * @return void
 	 */
 	public function run(): void {
@@ -110,37 +118,25 @@ final class Reconciler {
 			array(
 				'status'         => array( 'pending' ),
 				'payment_method' => 'bitsnap',
-				'limit'          => self::BATCH,
+				'limit'          => self::SCAN,
 				'orderby'        => 'date',
 				'order'          => 'DESC',
 				'date_created'   => ( $now - self::MAX_AGE ) . '...' . ( $now - self::MIN_AGE ),
-				'meta_query'     => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Small, capped batch of pending orders.
-					'relation' => 'AND',
-					array(
-						'key'     => Meta::ORDER_ID,
-						'compare' => 'EXISTS',
-					),
-					array(
-						'relation' => 'OR',
-						array(
-							'key'     => Meta::RECONCILED_AT,
-							'compare' => 'NOT EXISTS',
-						),
-						array(
-							'key'     => Meta::RECONCILED_AT,
-							'value'   => $now - ( self::MIN_AGE - 60 ),
-							'compare' => '<',
-							'type'    => 'NUMERIC',
-						),
-					),
-				),
 			)
 		);
 
+		$checked = 0;
 		foreach ( $orders as $order ) {
-			if ( ! $order instanceof \WC_Order ) {
+			if ( $checked >= self::BATCH ) {
+				break;
+			}
+			if ( ! $order instanceof \WC_Order || '' === (string) $order->get_meta( Meta::ORDER_ID ) ) {
 				continue;
 			}
+			if ( (int) $order->get_meta( Meta::RECONCILED_AT ) > $now - ( self::MIN_AGE - 60 ) ) {
+				continue;
+			}
+			++$checked;
 			$order->update_meta_data( Meta::RECONCILED_AT, $now );
 			$order->save();
 			$this->sync->sync( $order, 'reconcile' );
@@ -152,33 +148,31 @@ final class Reconciler {
 	/**
 	 * Marks orders pending for more than 48 hours so they are not checked again.
 	 *
+	 * Newest first, so an order that just crossed 48 hours is always among the first rows.
+	 *
 	 * @param int $now Current Unix time.
 	 * @return void
 	 */
 	private function give_up( int $now ): void {
-		$old = wc_get_orders(
+		$old  = wc_get_orders(
 			array(
 				'status'         => array( 'pending' ),
 				'payment_method' => 'bitsnap',
-				'limit'          => self::BATCH,
+				'limit'          => self::SCAN,
+				'orderby'        => 'date',
+				'order'          => 'DESC',
 				'date_created'   => '<' . ( $now - self::MAX_AGE ),
-				'meta_query'     => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Small, capped batch of pending orders.
-					'relation' => 'AND',
-					array(
-						'key'     => Meta::ORDER_ID,
-						'compare' => 'EXISTS',
-					),
-					array(
-						'key'     => Meta::GAVE_UP,
-						'compare' => 'NOT EXISTS',
-					),
-				),
 			)
 		);
+		$done = 0;
 		foreach ( $old as $order ) {
-			if ( ! $order instanceof \WC_Order ) {
+			if ( $done >= self::BATCH ) {
+				break;
+			}
+			if ( ! $order instanceof \WC_Order || '' === (string) $order->get_meta( Meta::ORDER_ID ) || '' !== (string) $order->get_meta( Meta::GAVE_UP ) ) {
 				continue;
 			}
+			++$done;
 			$order->update_meta_data( Meta::GAVE_UP, $now );
 			$order->add_order_note( __( 'Bitsnap: this order is still unpaid after 48 hours. The plugin stopped checking it automatically.', 'bitsnap-for-woocommerce' ) );
 			$order->save();

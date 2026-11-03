@@ -10,7 +10,7 @@ namespace Bitsnap\WooCommerce\Webhook;
 use Bitsnap\WooCommerce\Mapping\ApiOrder;
 use Bitsnap\WooCommerce\Support\Money;
 
-if ( ! defined( 'ABSPATH' ) && ! defined( 'BITSNAP_WC_TESTING' ) ) {
+if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 

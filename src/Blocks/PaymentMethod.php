@@ -7,7 +7,7 @@
 
 namespace Bitsnap\WooCommerce\Blocks;
 
-use Automattic\WooCommerce\Blocks\Payments\Integration\AbstractPaymentMethodType;
+use Automattic\WooCommerce\Blocks\Payments\Integrations\AbstractPaymentMethodType;
 use Bitsnap\WooCommerce\Plugin;
 use Bitsnap\WooCommerce\Support\Settings;
 use Bitsnap\WooCommerce\Woo\Gateway;
