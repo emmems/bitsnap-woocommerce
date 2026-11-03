@@ -1,0 +1,28 @@
+{
+	"name": "bitsnap-for-woocommerce",
+	"version": "0.1.0",
+	"description": "Block checkout integration for Bitsnap for WooCommerce.",
+	"private": true,
+	"license": "GPL-2.0-or-later",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/emmems/bitsnap-woocommerce.git"
+	},
+	"scripts": {
+		"build": "wp-scripts build",
+		"start": "wp-scripts start",
+		"lint:js": "wp-scripts lint-js assets/js",
+		"format:js": "wp-scripts format assets/js",
+		"env": "wp-env",
+		"env:start": "wp-env start",
+		"env:stop": "wp-env stop"
+	},
+	"devDependencies": {
+		"@woocommerce/dependency-extraction-webpack-plugin": "^3.0.0",
+		"@wordpress/element": "^10.0.0",
+		"@wordpress/env": "^10.0.0",
+		"@wordpress/html-entities": "^5.0.0",
+		"@wordpress/i18n": "^7.0.0",
+		"@wordpress/scripts": "^30.0.0"
+	}
+}

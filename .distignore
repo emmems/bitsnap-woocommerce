@@ -1,0 +1,33 @@
+# Files that stay out of the WordPress.org release and the release zip.
+# The compiled `build/` directory and `languages/*.mo` are produced by CI and ARE shipped.
+.git
+.github
+.wordpress-org
+.editorconfig
+.gitattributes
+.gitignore
+.distignore
+.wp-env.json
+.phpcs-cache
+.phpunit.cache
+.phpunit.result.cache
+.idea
+.vscode
+.DS_Store
+bin
+docs
+node_modules
+tests
+vendor
+assets/js/blocks
+composer.json
+composer.lock
+package.json
+package-lock.json
+phpcs.xml.dist
+phpunit.xml.dist
+webpack.config.js
+CONTRIBUTING.md
+README.md
+SECURITY.md
+*.zip

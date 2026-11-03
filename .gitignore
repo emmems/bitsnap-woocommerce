@@ -1,0 +1,11 @@
+/vendor/
+/node_modules/
+/build/
+/languages/*.mo
+/.phpunit.cache/
+/.phpunit.result.cache
+/.phpcs-cache
+/*.zip
+.DS_Store
+.idea/
+.vscode/
