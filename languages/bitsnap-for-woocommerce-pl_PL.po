@@ -1,0 +1,417 @@
+# Copyright (C) 2026 Bitsnap
+# This file is distributed under the GPL v2 or later.
+msgid ""
+msgstr ""
+"Project-Id-Version: Bitsnap for WooCommerce 0.1.0\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/bitsnap-for-woocommerce\n"
+"Last-Translator: Bitsnap\n"
+"Language-Team: Polish\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2026-11-03T16:56:25+00:00\n"
+"PO-Revision-Date: 2026-11-03 12:00+0000\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"Language: pl_PL\n"
+"Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+"X-Domain: bitsnap-for-woocommerce\n"
+
+#. Plugin Name of the plugin
+#: bitsnap-for-woocommerce.php
+msgid "Bitsnap for WooCommerce"
+msgstr "Bitsnap for WooCommerce"
+
+#. Plugin URI of the plugin
+#: bitsnap-for-woocommerce.php
+msgid "https://github.com/emmems/bitsnap-woocommerce"
+msgstr "https://github.com/emmems/bitsnap-woocommerce"
+
+#. Description of the plugin
+#: bitsnap-for-woocommerce.php
+msgid "Accept BLIK, cards, bank transfers and more in WooCommerce through Bitsnap. The buyer pays on a secure Bitsnap page."
+msgstr "Przyjmuj płatności BLIK, kartą, przelewem i inne w WooCommerce przez Bitsnap. Kupujący płaci na bezpiecznej stronie Bitsnap."
+
+#. Author of the plugin
+#: bitsnap-for-woocommerce.php
+#: src/Woo/Gateway.php:39
+msgid "Bitsnap"
+msgstr "Bitsnap"
+
+#. Author URI of the plugin
+#: bitsnap-for-woocommerce.php
+msgid "https://bitsnap.pl"
+msgstr "https://bitsnap.pl"
+
+#: bitsnap-for-woocommerce.php:66
+msgid "Bitsnap for WooCommerce needs WooCommerce to be installed and active."
+msgstr "Bitsnap for WooCommerce wymaga zainstalowanej i aktywnej wtyczki WooCommerce."
+
+#: src/Admin/Notices.php:93
+msgid "Bitsnap: the PHP sodium extension is missing, so API keys and webhook secrets are stored without encryption. Ask your host to enable sodium."
+msgstr "Bitsnap: brakuje rozszerzenia PHP sodium, więc klucze API i sekrety webhooków są zapisane bez szyfrowania. Poproś hosting o włączenie sodium."
+
+#: src/Admin/Notices.php:101
+msgid "Bitsnap: a saved key or secret cannot be decrypted. This happens when the site security keys (AUTH_KEY, SECURE_AUTH_KEY) change. Enter the key and the webhook secret again."
+msgstr "Bitsnap: zapisanego klucza lub sekretu nie można odszyfrować. Tak się dzieje, gdy zmienią się klucze bezpieczeństwa strony (AUTH_KEY, SECURE_AUTH_KEY). Wpisz klucz i sekret webhooka ponownie."
+
+#: src/Admin/RegisterWebhook.php:70
+msgid "Invalid request."
+msgstr "Nieprawidłowe żądanie."
+
+#: src/Admin/RegisterWebhook.php:74
+msgid "You are not allowed to do this."
+msgstr "Nie masz uprawnień do tej czynności."
+
+#. translators: %s: environment, test or live.
+#: src/Admin/RegisterWebhook.php:84
+#, php-format
+msgid "Save the %s API key first, then register the webhook."
+msgstr "Najpierw zapisz klucz API (%s), potem zarejestruj webhook."
+
+#: src/Admin/RegisterWebhook.php:99
+msgid "A webhook for this site already exists in Bitsnap. Its secret cannot be read again. Delete the webhook in Bitsnap and register it again, or paste its secret into the field below."
+msgstr "Webhook dla tej strony już istnieje w Bitsnap. Jego sekretu nie da się odczytać ponownie. Usuń webhook w Bitsnap i zarejestruj go jeszcze raz albo wklej jego sekret w polu poniżej."
+
+#: src/Admin/RegisterWebhook.php:123
+msgid "Bitsnap created the webhook but did not return its secret. Delete it in Bitsnap and try again."
+msgstr "Bitsnap utworzył webhook, ale nie zwrócił jego sekretu. Usuń go w Bitsnap i spróbuj ponownie."
+
+#. translators: %s: environment, test or live.
+#: src/Admin/RegisterWebhook.php:133
+#, php-format
+msgid "The %s webhook was registered in Bitsnap and its secret was saved."
+msgstr "Webhook (%s) został zarejestrowany w Bitsnap, a jego sekret zapisany."
+
+#: src/Plugin.php:108
+msgid "Settings"
+msgstr "Ustawienia"
+
+#: src/Woo/ErrorMessages.php:34
+msgid "The order total does not equal the sum of its lines. Check for plugins that change prices or add fees at checkout."
+msgstr "Suma zamówienia nie zgadza się z sumą jego pozycji. Sprawdź wtyczki, które zmieniają ceny lub dodają opłaty w koszyku."
+
+#: src/Woo/ErrorMessages.php:36
+msgid "The store currency is not enabled for any payment method in your Bitsnap project."
+msgstr "Waluta sklepu nie jest włączona dla żadnej metody płatności w Twoim projekcie Bitsnap."
+
+#. translators: %s: permission name such as checkout:create.
+#: src/Woo/ErrorMessages.php:40
+#, php-format
+msgid "The API key lacks a required permission (%s). Create a new key with that permission in Bitsnap."
+msgstr "Klucz API nie ma wymaganego uprawnienia (%s). Utwórz w Bitsnap nowy klucz z tym uprawnieniem."
+
+#: src/Woo/ErrorMessages.php:44
+msgid "This action works only with a test key."
+msgstr "Ta czynność działa tylko z kluczem testowym."
+
+#: src/Woo/ErrorMessages.php:46
+msgid "Bitsnap is limiting requests. Try again in a minute."
+msgstr "Bitsnap ogranicza liczbę żądań. Spróbuj ponownie za minutę."
+
+#: src/Woo/ErrorMessages.php:48
+msgid "The amount is higher than what is left to refund on this payment."
+msgstr "Kwota jest wyższa niż to, co zostało do zwrotu z tej płatności."
+
+#: src/Woo/ErrorMessages.php:50
+msgid "This payment method cannot be refunded through Bitsnap. Return the money yourself, then record it with \"Refund manually\"."
+msgstr "Tej płatności nie można zwrócić przez Bitsnap. Zwróć pieniądze samodzielnie, a potem zapisz zwrot przyciskiem „Zwrot ręczny”."
+
+#: src/Woo/ErrorMessages.php:52
+msgid "The Bitsnap order has not been paid, so there is nothing to refund."
+msgstr "Zamówienie w Bitsnap nie zostało opłacone, więc nie ma czego zwracać."
+
+#. translators: %s: error detail from the API, usually the name of the invalid field.
+#: src/Woo/ErrorMessages.php:55
+#, php-format
+msgid "Bitsnap rejected the request: %s"
+msgstr "Bitsnap odrzucił żądanie: %s"
+
+#. translators: %s: technical error message.
+#: src/Woo/ErrorMessages.php:60
+#, php-format
+msgid "Could not reach Bitsnap: %s"
+msgstr "Nie udało się połączyć z Bitsnap: %s"
+
+#: src/Woo/ErrorMessages.php:63
+msgid "The API key is invalid or was revoked. Check the key in the gateway settings."
+msgstr "Klucz API jest nieprawidłowy lub został unieważniony. Sprawdź klucz w ustawieniach bramki."
+
+#: src/Woo/ErrorMessages.php:66
+msgid "The API key is not allowed to do this. Check its permissions in Bitsnap."
+msgstr "Klucz API nie ma uprawnień do tej czynności. Sprawdź jego uprawnienia w Bitsnap."
+
+#. translators: %s: error message from the API.
+#: src/Woo/ErrorMessages.php:69
+#, php-format
+msgid "Bitsnap returned an error: %s"
+msgstr "Bitsnap zwrócił błąd: %s"
+
+#: src/Woo/Gateway.php:40
+msgid "Accept BLIK, cards, bank transfers and more through Bitsnap. The buyer pays on a secure Bitsnap page."
+msgstr "Przyjmuj płatności BLIK, kartą, przelewem i inne przez Bitsnap. Kupujący płaci na bezpiecznej stronie Bitsnap."
+
+#: src/Woo/Gateway.php:93
+msgid "TEST MODE: no real money is charged."
+msgstr "TRYB TESTOWY: prawdziwe pieniądze nie są pobierane."
+
+#: src/Woo/Gateway.php:108
+msgid "Enable/Disable"
+msgstr "Włącz/wyłącz"
+
+#: src/Woo/Gateway.php:110
+msgid "Enable Bitsnap"
+msgstr "Włącz Bitsnap"
+
+#: src/Woo/Gateway.php:114
+msgid "Title"
+msgstr "Tytuł"
+
+#: src/Woo/Gateway.php:116
+msgid "What the buyer sees as the payment method name at checkout."
+msgstr "Nazwa metody płatności widoczna dla kupującego w kasie."
+
+#: src/Woo/Gateway.php:117
+msgid "Online payment (BLIK, card, bank transfer)"
+msgstr "Płatność online (BLIK, karta, przelew)"
+
+#: src/Woo/Gateway.php:121
+msgid "Description"
+msgstr "Opis"
+
+#: src/Woo/Gateway.php:123
+msgid "Text under the payment method name at checkout."
+msgstr "Tekst pod nazwą metody płatności w kasie."
+
+#: src/Woo/Gateway.php:124
+msgid "You will be redirected to a secure Bitsnap page to pay."
+msgstr "Przejdziesz na bezpieczną stronę Bitsnap, aby zapłacić."
+
+#: src/Woo/Gateway.php:128
+msgid "Test mode"
+msgstr "Tryb testowy"
+
+#: src/Woo/Gateway.php:130
+msgid "Use the test API key. No real money moves."
+msgstr "Używaj testowego klucza API. Żadne prawdziwe pieniądze nie są przenoszone."
+
+#: src/Woo/Gateway.php:131
+msgid "Switch it off when you are ready to take real payments."
+msgstr "Wyłącz, gdy będziesz gotowy przyjmować prawdziwe płatności."
+
+#: src/Woo/Gateway.php:141
+msgid "Test credentials"
+msgstr "Dane dostępowe testowe"
+
+#: src/Woo/Gateway.php:141
+msgid "Live credentials"
+msgstr "Dane dostępowe produkcyjne"
+
+#: src/Woo/Gateway.php:146
+msgid "Test API key"
+msgstr "Testowy klucz API"
+
+#: src/Woo/Gateway.php:146
+msgid "Live API key"
+msgstr "Produkcyjny klucz API"
+
+#: src/Woo/Gateway.php:149
+msgid "Starts with bs_test_. Needs the checkout:create, orders:read and refunds:write permissions, and customers:pii to send buyer details."
+msgstr "Zaczyna się od bs_test_. Wymaga uprawnień checkout:create, orders:read i refunds:write oraz customers:pii, aby wysyłać dane kupującego."
+
+#: src/Woo/Gateway.php:150
+msgid "Starts with bs_live_. Needs the same permissions as the test key."
+msgstr "Zaczyna się od bs_live_. Wymaga tych samych uprawnień co klucz testowy."
+
+#: src/Woo/Gateway.php:154
+msgid "Test webhook secret"
+msgstr "Testowy sekret webhooka"
+
+#: src/Woo/Gateway.php:154
+msgid "Live webhook secret"
+msgstr "Produkcyjny sekret webhooka"
+
+#: src/Woo/Gateway.php:156
+msgid "Starts with whsec_. Filled in for you by \"Register webhook\", or paste the secret of a webhook you created in Bitsnap."
+msgstr "Zaczyna się od whsec_. Uzupełnia go przycisk „Zarejestruj webhook” albo wklej sekret webhooka utworzonego w Bitsnap."
+
+#: src/Woo/Gateway.php:162
+msgid "Advanced"
+msgstr "Zaawansowane"
+
+#: src/Woo/Gateway.php:166
+msgid "API base URL"
+msgstr "Adres bazowy API"
+
+#: src/Woo/Gateway.php:168
+msgid "Leave as it is unless Bitsnap support tells you to change it."
+msgstr "Nie zmieniaj, chyba że poprosi o to wsparcie Bitsnap."
+
+#: src/Woo/Gateway.php:173
+msgid "Debug log"
+msgstr "Dziennik debugowania"
+
+#: src/Woo/Gateway.php:175
+msgid "Log API calls and webhooks"
+msgstr "Zapisuj wywołania API i webhooki"
+
+#. translators: %s: link to the WooCommerce logs page.
+#: src/Woo/Gateway.php:178
+#, php-format
+msgid "Writes to WooCommerce > Status > Logs (source \"bitsnap\"). Keys and secrets are removed from the log. %s"
+msgstr "Zapisuje do WooCommerce > Status > Logi (źródło „bitsnap”). Klucze i sekrety są usuwane z dziennika. %s"
+
+#: src/Woo/Gateway.php:179
+msgid "Open logs"
+msgstr "Otwórz logi"
+
+#. translators: 1: webhook URL, 2: opening link tag for the Register webhook button, 3: closing link tag.
+#: src/Woo/Gateway.php:215
+#, php-format
+msgid "Webhook URL: %1$s. Save the API key first, then %2$sRegister webhook%3$s to create it in Bitsnap and store its secret."
+msgstr "Adres webhooka: %1$s. Najpierw zapisz klucz API, potem %2$szarejestruj webhook%3$s, aby utworzyć go w Bitsnap i zapisać jego sekret."
+
+#: src/Woo/Gateway.php:245
+msgid "Saved, but it cannot be read. Enter it again."
+msgstr "Zapisano, ale nie da się go odczytać. Wpisz go ponownie."
+
+#: src/Woo/Gateway.php:247
+msgid "Saved. Enter a new value to replace it."
+msgstr "Zapisano. Wpisz nową wartość, aby ją zastąpić."
+
+#. translators: %s: the prefix the value must start with.
+#: src/Woo/Gateway.php:294
+#, php-format
+msgid "The value was not saved: it must start with %s."
+msgstr "Wartość nie została zapisana: musi zaczynać się od %s."
+
+#: src/Woo/Gateway.php:324
+msgid "The order was not found. Please try again."
+msgstr "Nie znaleziono zamówienia. Spróbuj ponownie."
+
+#. translators: %s: reason the payment could not be started.
+#: src/Woo/Gateway.php:334
+#, php-format
+msgid "Bitsnap could not start the payment: %s"
+msgstr "Bitsnap nie mógł rozpocząć płatności: %s"
+
+#: src/Woo/Gateway.php:338
+msgid "We could not start the payment. Please try again or choose another payment method."
+msgstr "Nie udało się rozpocząć płatności. Spróbuj ponownie lub wybierz inną metodę płatności."
+
+#: src/Woo/OrderReader.php:92
+msgid "Rounding"
+msgstr "Zaokrąglenie"
+
+#. translators: %d: number of order lines folded into one line.
+#: src/Woo/OrderReader.php:94
+#, php-format
+msgid "Other items (%d)"
+msgstr "Pozostałe produkty (%d)"
+
+#. translators: %s: where the refund was made, for example "dashboard".
+#: src/Woo/OrderUpdater.php:171
+#, php-format
+msgid "Refunded in Bitsnap (%s)"
+msgstr "Zwrot wykonany w Bitsnap (%s)"
+
+#. translators: 1: refund amount, 2: Bitsnap refund id, 3: error message.
+#: src/Woo/OrderUpdater.php:188
+#, php-format
+msgid "Bitsnap refunded %1$s (refund %2$s), but WooCommerce could not record it: %3$s. Record the refund manually."
+msgstr "Bitsnap zwrócił %1$s (zwrot %2$s), ale WooCommerce nie mógł go zapisać: %3$s. Zapisz zwrot ręcznie."
+
+#. translators: 1: refund amount, 2: Bitsnap refund id.
+#: src/Woo/OrderUpdater.php:201
+#, php-format
+msgid "Refund of %1$s made in Bitsnap was recorded (refund %2$s). Stock was not restored."
+msgstr "Zapisano zwrot %1$s wykonany w Bitsnap (zwrot %2$s). Stan magazynowy nie został przywrócony."
+
+#. translators: 1: payment method such as BLIK, 2: transaction id.
+#: src/Woo/OrderUpdater.php:224
+#, php-format
+msgid "Bitsnap payment received (%1$s, transaction %2$s)."
+msgstr "Otrzymano płatność Bitsnap (%1$s, transakcja %2$s)."
+
+#. translators: 1: payment method, 2: transaction id.
+#: src/Woo/OrderUpdater.php:227
+#, php-format
+msgid "Bitsnap confirmed the payment (%1$s, transaction %2$s)."
+msgstr "Bitsnap potwierdził płatność (%1$s, transakcja %2$s)."
+
+#: src/Woo/OrderUpdater.php:229
+msgid "Bitsnap reported that the payment failed."
+msgstr "Bitsnap zgłosił, że płatność się nie powiodła."
+
+#: src/Woo/OrderUpdater.php:231
+msgid "The Bitsnap payment session expired without a payment."
+msgstr "Sesja płatności Bitsnap wygasła bez płatności."
+
+#: src/Woo/OrderUpdater.php:233
+msgid "The buyer chose payment on delivery in Bitsnap. The order is processing; collect the payment on delivery."
+msgstr "Kupujący wybrał w Bitsnap płatność przy odbiorze. Zamówienie jest w realizacji; pobierz płatność przy dostawie."
+
+#: src/Woo/OrderUpdater.php:235
+msgid "The buyer chose a manual transfer in Bitsnap. The order is on hold until Bitsnap confirms the transfer."
+msgstr "Kupujący wybrał w Bitsnap przelew tradycyjny. Zamówienie czeka, aż Bitsnap potwierdzi przelew."
+
+#. translators: 1: refund amount, 2: Bitsnap refund id.
+#: src/Woo/OrderUpdater.php:238
+#, php-format
+msgid "A refund of %1$s in Bitsnap failed (refund %2$s). Check it in the Bitsnap dashboard."
+msgstr "Zwrot %1$s w Bitsnap nie powiódł się (zwrot %2$s). Sprawdź go w panelu Bitsnap."
+
+#. translators: %s: Bitsnap refund id.
+#: src/Woo/OrderUpdater.php:241
+#, php-format
+msgid "Bitsnap reported a refund (%s) without an amount. Record it manually if money was returned."
+msgstr "Bitsnap zgłosił zwrot (%s) bez kwoty. Jeśli pieniądze zostały zwrócone, zapisz zwrot ręcznie."
+
+#. translators: 1: Bitsnap order id, 2: environment (test or live).
+#: src/Woo/PaymentStarter.php:133
+#, php-format
+msgid "Bitsnap payment started (order %1$s, %2$s mode). The buyer was sent to the payment page."
+msgstr "Rozpoczęto płatność Bitsnap (zamówienie %1$s, tryb: %2$s). Kupujący został przekierowany na stronę płatności."
+
+#: src/Woo/Reconciler.php:183
+msgid "Bitsnap: this order is still unpaid after 48 hours. The plugin stopped checking it automatically."
+msgstr "Bitsnap: to zamówienie nadal jest nieopłacone po 48 godzinach. Wtyczka przestała je automatycznie sprawdzać."
+
+#: src/Woo/Refunder.php:74
+msgid "The order was not found."
+msgstr "Nie znaleziono zamówienia."
+
+#: src/Woo/Refunder.php:80
+msgid "This order was not paid through Bitsnap, so Bitsnap cannot refund it."
+msgstr "To zamówienie nie zostało opłacone przez Bitsnap, więc Bitsnap nie może go zwrócić."
+
+#. translators: %s: environment, test or live.
+#: src/Woo/Refunder.php:87
+#, php-format
+msgid "There is no %s API key in the gateway settings, so the refund cannot be sent to Bitsnap."
+msgstr "W ustawieniach bramki nie ma klucza API (%s), więc zwrot nie może zostać wysłany do Bitsnap."
+
+#: src/Woo/Refunder.php:95
+msgid "The refund amount must be greater than zero."
+msgstr "Kwota zwrotu musi być większa od zera."
+
+#: src/Woo/Refunder.php:125
+msgid "This payment method cannot be refunded through Bitsnap (cash on delivery or a manual transfer). Return the money yourself, then record it with \"Refund manually\"."
+msgstr "Tej metody płatności (płatność przy odbiorze lub przelew tradycyjny) nie można zwrócić przez Bitsnap. Zwróć pieniądze samodzielnie, a potem zapisz zwrot przyciskiem „Zwrot ręczny”."
+
+#: src/Woo/Refunder.php:129
+msgid "Bitsnap could not make the refund. Check the payment in the Bitsnap dashboard."
+msgstr "Bitsnap nie mógł wykonać zwrotu. Sprawdź płatność w panelu Bitsnap."
+
+#. translators: 1: amount, 2: Bitsnap refund id, 3: refund status such as SUCCEEDED or PENDING.
+#: src/Woo/Refunder.php:139
+#, php-format
+msgid "Refund of %1$s sent to Bitsnap (refund %2$s, status %3$s)."
+msgstr "Zwrot %1$s wysłano do Bitsnap (zwrot %2$s, status %3$s)."
+
+#: assets/js/blocks/index.js:17
+msgid "Online payment (Bitsnap)"
+msgstr "Płatność online (Bitsnap)"
+
+#: assets/js/blocks/index.js:35
+msgid "Test mode is enabled. No real money is charged."
+msgstr "Tryb testowy jest włączony. Prawdziwe pieniądze nie są pobierane."
