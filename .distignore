@@ -4,6 +4,7 @@
 .github
 .wordpress-org
 .editorconfig
+.eslintrc.js
 .gitattributes
 .gitignore
 .distignore
@@ -19,7 +20,7 @@ docs
 node_modules
 tests
 vendor
-assets/js/blocks
+assets
 composer.json
 composer.lock
 package.json

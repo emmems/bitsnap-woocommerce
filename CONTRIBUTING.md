@@ -27,5 +27,6 @@ See the **Develop** section of [README.md](README.md). Docker and Node are enoug
 
 - Describe what changed and how you tested it. For payment flows, say whether you tried the classic checkout, the Blocks checkout, or both.
 - Keep commits focused. CI runs PHPCS, Plugin Check and PHPUnit on PHP 7.4 to 8.4. All must be green.
+- Changes to the gateway, webhook, refund or reconcile code should also pass `npm run test:smoke` (see README), ideally with HPOS on and off.
 
 By contributing you agree to license your work under GPL-2.0-or-later.

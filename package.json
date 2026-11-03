@@ -15,7 +15,8 @@
 		"format:js": "wp-scripts format assets/js",
 		"env": "wp-env",
 		"env:start": "wp-env start",
-		"env:stop": "wp-env stop"
+		"env:stop": "wp-env stop",
+		"test:smoke": "wp-env run cli --env-cwd=wp-content/plugins/$(basename $PWD) wp eval-file tests/integration/smoke.php"
 	},
 	"devDependencies": {
 		"@woocommerce/dependency-extraction-webpack-plugin": "^3.0.0",

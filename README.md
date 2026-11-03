@@ -41,7 +41,13 @@ npm run build        # or: npm start
 
 # A local WordPress with WooCommerce, with the plugin mounted
 npm run env:start    # http://localhost:8888, admin / password
+
+# Smoke test inside that site: a real WooCommerce, with the Bitsnap API mocked.
+# It creates orders, pays them with signed webhooks, refunds, and checks Blocks registration.
+npm run test:smoke
 ```
+
+If port 8888 is taken, start wp-env with `WP_ENV_PORT=18888 WP_ENV_TESTS_PORT=18889`. Run `npx wp-env destroy` when you are done.
 
 If you have PHP and Composer installed, `composer install`, `composer test` and `composer lint` do the same.
 
