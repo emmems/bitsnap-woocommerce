@@ -1,0 +1,87 @@
+name: Release
+
+# A tag such as v0.2.0 (or 0.2.0) publishes to WordPress.org and attaches a zip to the GitHub release.
+# Run it by hand with "dry run" on to check the whole flow without publishing.
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - '[0-9]+.[0-9]+.[0-9]+*'
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'Dry run: build and check, but do not commit to WordPress.org SVN'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read and check the version
+        id: version
+        run: |
+          header=$(grep -m1 -E '^\s*\*\s*Version:' bitsnap-for-woocommerce.php | sed -E 's/.*Version:\s*//; s/\s+$//')
+          stable=$(grep -m1 -E '^Stable tag:' readme.txt | sed -E 's/Stable tag:\s*//; s/\s+$//')
+          const=$(grep -m1 "define( 'BITSNAP_WC_VERSION'" bitsnap-for-woocommerce.php | sed -E "s/.*', '([^']+)'.*/\1/")
+          echo "header=$header stable=$stable constant=$const"
+          if [ "$header" != "$stable" ] || [ "$header" != "$const" ]; then
+            echo "::error::Version mismatch between the plugin header, BITSNAP_WC_VERSION and readme.txt Stable tag."
+            exit 1
+          fi
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            tag="${GITHUB_REF_NAME#v}"
+            if [ "$tag" != "$header" ]; then
+              echo "::error::The tag ($tag) does not match the plugin version ($header)."
+              exit 1
+            fi
+          fi
+          echo "version=$header" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Build the block script
+        run: |
+          npm ci
+          npm run build
+
+      - name: Compile translations
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq gettext
+          bash bin/build-mo.sh
+
+      - name: Deploy to WordPress.org
+        id: deploy
+        uses: 10up/action-wordpress-plugin-deploy@stable
+        with:
+          generate-zip: true
+        env:
+          SVN_USERNAME: ${{ secrets.SVN_USERNAME }}
+          SVN_PASSWORD: ${{ secrets.SVN_PASSWORD }}
+          SLUG: bitsnap-for-woocommerce
+          VERSION: ${{ steps.version.outputs.version }}
+          ASSETS_DIR: .wordpress-org
+          # A tag always publishes. A manual run publishes only when "dry run" is turned off.
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run == true }}
+
+      - name: Keep the zip as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bitsnap-for-woocommerce-${{ steps.version.outputs.version }}
+          path: ${{ steps.deploy.outputs.zip-path }}
+
+      - name: Attach the zip to the GitHub release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.deploy.outputs.zip-path }}
+          generate_release_notes: true
