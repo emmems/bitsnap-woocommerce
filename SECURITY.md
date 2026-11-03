@@ -4,7 +4,7 @@
 
 Please report security problems privately. Do not open a public issue.
 
-Use [GitHub private vulnerability reporting](https://github.com/emmems/bitsnap-woocommerce/security/advisories/new) (the "Report a vulnerability" button on the Security tab).
+Email **kontakt@bitsnap.pl** with the subject "Security: bitsnap-for-woocommerce", or use [GitHub private vulnerability reporting](https://github.com/emmems/bitsnap-woocommerce/security/advisories/new) (the "Report a vulnerability" button on the Security tab).
 
 Include the plugin version, what you found, how to reproduce it, and what an attacker could do with it. Do not include real API keys or webhook secrets.
 
