@@ -69,6 +69,7 @@ final class ApiOrder {
 			'amount_refunded'     => Money::amount_of( $refunded ),
 			'currency'            => $currency,
 			'environment'         => self::environment( self::str( $order, 'environment' ) ),
+			'invoice_url'         => self::str( $order, 'invoiceUrl' ),
 		);
 	}
 

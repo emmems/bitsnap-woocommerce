@@ -47,6 +47,7 @@ final class OrderUpdater {
 			'is_paid'          => $order->is_paid(),
 			'awaiting_offline' => '' !== (string) $order->get_meta( Meta::OFFLINE ),
 			'known_refund_ids' => $this->list_meta( $order, Meta::REFUND_IDS ),
+			'invoice_url'      => (string) $order->get_meta( Meta::INVOICE_URL ),
 		);
 	}
 
@@ -94,6 +95,16 @@ final class OrderUpdater {
 
 				case 'set_status':
 					$order->update_status( (string) $action['status'], $this->note( (string) $action['note'], $api_order, '' ) . ' ' );
+					break;
+
+				case 'invoice':
+					$url = (string) $action['url'];
+					if ( '' !== $url && $url !== (string) $order->get_meta( Meta::INVOICE_URL ) ) {
+						/* translators: %s: URL of the invoice issued by Bitsnap. */
+						$order->add_order_note( sprintf( __( 'Bitsnap invoice issued: %s', 'bitsnap-for-woocommerce' ), esc_url_raw( $url ) ), 0, false );
+						$order->update_meta_data( Meta::INVOICE_URL, $url );
+						$order->save();
+					}
 					break;
 
 				case 'refund':

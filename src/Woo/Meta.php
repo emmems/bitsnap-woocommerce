@@ -82,4 +82,7 @@ final class Meta {
 	 * Most ids kept in each list.
 	 */
 	public const LIST_CAP = 50;
+
+	/** Invoice URL already noted on the order. */
+	public const INVOICE_URL = '_bitsnap_invoice_url';
 }

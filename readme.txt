@@ -36,7 +36,7 @@ Bitsnap for WooCommerce adds a payment method to your checkout. When a buyer cho
 
 == External services ==
 
-This plugin connects to the Bitsnap service (https://bitsnap.pl), operated by Bitsnap, to create and check payments and refunds. A Bitsnap account is required. The plugin cannot take payments without it.
+This plugin connects to the Bitsnap service (https://bitsnap.pl), operated by Bitsnap, to create and check payments and refunds, and optionally to connect your store with OAuth. A Bitsnap account is required. The plugin cannot take payments without it.
 
 The base address is https://bitsnap.pl. It can be changed under "Advanced" in the gateway settings.
 
@@ -50,7 +50,7 @@ The base address is https://bitsnap.pl. It can be changed under "Advanced" in th
 
 **5. Webhooks from Bitsnap.** Bitsnap sends signed payment and refund events to your shop at `/?wc-api=bitsnap`. The plugin accepts them only with a valid signature.
 
-Every request carries your API key. Bitsnap Terms of Service: https://bitsnap.pl/regulamin. Bitsnap Privacy Policy: https://bitsnap.pl/polityka-prywatnosci.
+When you choose Connect with Bitsnap, the plugin uses `https://bitsnap.pl/oauth/register`, `/oauth/authorize`, `/oauth/token` and `/oauth/revoke` to register the public client, obtain and refresh scoped tokens, and revoke the grant when disconnected. OAuth uses PKCE; the plugin stores tokens encrypted. Every API request carries your API key or OAuth access token. Bitsnap Terms of Service: https://bitsnap.pl/regulamin. Bitsnap Privacy Policy: https://bitsnap.pl/polityka-prywatnosci.
 
 == Installation ==
 

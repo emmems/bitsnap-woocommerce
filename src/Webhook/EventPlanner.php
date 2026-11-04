@@ -60,6 +60,9 @@ final class EventPlanner {
 	public static function plan( array $event, array $context ): array {
 		$order = (array) ( $event['order'] ?? array() );
 
+		if ( 'INVOICE_ISSUED' === ( $event['type'] ?? '' ) ) {
+			return $actions;
+		}
 		switch ( $event['type'] ?? '' ) {
 			case 'TRANSACTION_CREATED':
 				if ( ApiOrder::STATE_AWAITING_OFFLINE === ( $order['payment_state'] ?? '' ) ) {
@@ -96,6 +99,27 @@ final class EventPlanner {
 			default:
 				return array();
 		}
+	}
+
+
+	/**
+	 * Plans a private invoice note when a new invoice URL is present.
+	 *
+	 * @param array<string,mixed> $order Normalized order.
+	 * @param array<string,mixed> $context Order context.
+	 * @return array<int,array<string,mixed>>
+	 */
+	public static function plan_invoice( array $order, array $context ): array {
+		$url = (string) ( $order['invoice_url'] ?? '' );
+		if ( '' === $url || (string) ( $context['invoice_url'] ?? '' ) === $url ) {
+			return array();
+		}
+		return array(
+			array(
+				'type' => 'invoice',
+				'url'  => $url,
+			),
+		);
 	}
 
 	/**

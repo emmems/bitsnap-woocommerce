@@ -153,7 +153,8 @@ final class Handler {
 		}
 
 		try {
-			$actions = EventPlanner::plan( $event, $this->updater->context( $order ) );
+			$context = $this->updater->context( $order );
+			$actions = array_merge( EventPlanner::plan_invoice( $api_order, $context ), EventPlanner::plan( $event, $context ) );
 			$this->updater->apply( $order, $actions, $api_order, 'webhook' );
 			$this->updater->remember( $order, Meta::EVENTS, $event['id'] );
 		} catch ( \Throwable $e ) {

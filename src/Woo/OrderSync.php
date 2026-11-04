@@ -90,7 +90,8 @@ final class OrderSync {
 			return null;
 		}
 
-		$actions = EventPlanner::plan_for_state( $api_order['payment_state'], $api_order, $this->updater->context( $order ) );
+		$context = $this->updater->context( $order );
+		$actions = array_merge( EventPlanner::plan_invoice( $api_order, $context ), EventPlanner::plan_for_state( $api_order['payment_state'], $api_order, $context ) );
 		$this->updater->apply( $order, $actions, $api_order, $source );
 
 		return $api_order['payment_state'];

@@ -32,6 +32,7 @@ final class RegisterWebhook {
 		'TRANSACTION_EXPIRED',
 		'REFUND_SUCCEEDED',
 		'REFUND_FAILED',
+		'INVOICE_ISSUED',
 	);
 
 	/**
