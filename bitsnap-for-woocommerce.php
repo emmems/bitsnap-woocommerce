@@ -3,7 +3,7 @@
  * Plugin Name:          Bitsnap for WooCommerce
  * Plugin URI:           https://github.com/emmems/bitsnap-woocommerce
  * Description:          Accept BLIK, cards, bank transfers and more in WooCommerce through Bitsnap. The buyer pays on a secure Bitsnap page.
- * Version:              0.1.0
+ * Version:              0.2.0
  * Requires at least:    6.5
  * Requires PHP:         7.4
  * Requires Plugins:     woocommerce
@@ -23,13 +23,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'BITSNAP_WC_VERSION', '0.1.0' );
+define( 'BITSNAP_WC_VERSION', '0.2.0' );
 define( 'BITSNAP_WC_FILE', __FILE__ );
 define( 'BITSNAP_WC_DIR', plugin_dir_path( __FILE__ ) );
 define( 'BITSNAP_WC_URL', plugin_dir_url( __FILE__ ) );
 
 require_once BITSNAP_WC_DIR . 'src/Autoloader.php';
 \Bitsnap\WooCommerce\Autoloader::register( BITSNAP_WC_DIR . 'src/' );
+
+// Updates come from GitHub releases (not WordPress.org). Works even while WooCommerce is inactive.
+\Bitsnap\WooCommerce\Updates\Updater::register();
 
 /**
  * Tells WooCommerce which features the plugin supports.

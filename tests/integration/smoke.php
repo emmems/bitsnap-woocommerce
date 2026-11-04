@@ -1270,6 +1270,68 @@ $GLOBALS['bitsnap_mock'] = $saved_mock;
 // Put back what the later sections of this script expect.
 $plugin->settings()->set_secret( 'webhook_secret_test', 'whsec_SMOKESECRET' );
 
+// ---------------------------------------------------------------- self-hosted updates
+
+smoke_section( 'Updates from GitHub releases' );
+$checker = \Bitsnap\WooCommerce\Updates\Updater::checker();
+smoke_check( is_object( $checker ), 'the update checker is created (WP-CLI context)' );
+if ( is_object( $checker ) ) {
+	smoke_check( 'bitsnap-for-woocommerce' === $checker->slug, 'the update checker slug is bitsnap-for-woocommerce', (string) $checker->slug );
+	smoke_check( 'https://github.com/emmems/bitsnap-woocommerce/' === $checker->metadataUrl, 'the update checker reads the GitHub repository', (string) $checker->metadataUrl );
+
+	$github_release = array(
+		'tag_name'    => 'v9.9.9',
+		'name'        => 'v9.9.9',
+		'zipball_url' => 'https://api.github.com/repos/emmems/bitsnap-woocommerce/zipball/v9.9.9',
+		'html_url'    => 'https://github.com/emmems/bitsnap-woocommerce/releases/tag/v9.9.9',
+		'created_at'  => '2026-11-04T10:00:00Z',
+		'body'        => 'Smoke release',
+		'assets'      => array(
+			array(
+				'name'                 => 'bitsnap-for-woocommerce.zip',
+				'url'                  => 'https://api.github.com/repos/emmems/bitsnap-woocommerce/releases/assets/1',
+				'browser_download_url' => 'https://github.com/emmems/bitsnap-woocommerce/releases/download/v9.9.9/bitsnap-for-woocommerce.zip',
+				'download_count'       => 3,
+			),
+		),
+	);
+	$GLOBALS['github_release'] = $github_release;
+	$github_mock               = static function ( $pre, $args, $url ) {
+		if ( 0 !== strpos( $url, 'https://api.github.com/' ) ) {
+			return $pre;
+		}
+		$is_latest = (bool) preg_match( '#/repos/emmems/bitsnap-woocommerce/releases/latest#', $url );
+		return array(
+			'headers'  => array(),
+			'body'     => wp_json_encode( $is_latest ? $GLOBALS['github_release'] : array( 'message' => 'Not Found' ) ),
+			'response' => array( 'code' => $is_latest ? 200 : 404, 'message' => '' ),
+			'cookies'  => array(),
+			'filename' => null,
+		);
+	};
+	add_filter( 'pre_http_request', $github_mock, 9, 3 );
+
+	$update = $checker->requestUpdate();
+	smoke_check( is_object( $update ) && '9.9.9' === $update->version, 'a newer GitHub release is offered as an update', is_object( $update ) ? (string) $update->version : 'none' );
+	smoke_check(
+		is_object( $update ) && 'https://github.com/emmems/bitsnap-woocommerce/releases/download/v9.9.9/bitsnap-for-woocommerce.zip' === $update->download_url,
+		'the update installs the release asset, not the source archive',
+		is_object( $update ) ? (string) $update->download_url : 'none'
+	);
+
+	// A release without the zip must not fall back to the source archive, a tag or the branch.
+	$GLOBALS['github_release']['assets'] = array();
+	$broken                              = $checker->requestUpdate();
+	smoke_check( null === $broken, 'a release without the zip asset is not offered as an update' );
+
+	remove_filter( 'pre_http_request', $github_mock, 9 );
+	unset( $GLOBALS['github_release'] );
+}
+smoke_check( true === \Bitsnap\WooCommerce\Updates\Updater::enabled(), 'updates are on by default' );
+add_filter( 'bitsnap_wc_enable_updates', '__return_false' );
+smoke_check( false === \Bitsnap\WooCommerce\Updates\Updater::enabled(), 'the bitsnap_wc_enable_updates filter turns update checks off' );
+remove_filter( 'bitsnap_wc_enable_updates', '__return_false' );
+
 // ---------------------------------------------------------------- logging
 
 smoke_section( 'Logging' );
