@@ -121,7 +121,7 @@ final class Reconciler {
 				'payment_method' => Gateway::IDS,
 				'limit'          => self::BATCH,
 				'page'           => $page,
-				'orderby'        => 'date',
+				'orderby'        => 'date ID',
 				'order'          => 'DESC',
 				'date_created'   => ( $now - self::MAX_AGE ) . '...' . ( $now - self::MIN_AGE ),
 			)
@@ -162,7 +162,7 @@ final class Reconciler {
 				'status'         => array( 'pending' ),
 				'payment_method' => Gateway::IDS,
 				'limit'          => self::SCAN,
-				'orderby'        => 'date',
+				'orderby'        => 'date ID',
 				'order'          => 'DESC',
 				'date_created'   => '<' . ( $now - self::MAX_AGE ),
 			)

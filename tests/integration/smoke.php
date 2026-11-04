@@ -766,11 +766,12 @@ smoke_check( false !== as_next_scheduled_action( Reconciler::HOOK, array(), Reco
 smoke_section( 'Reconciliation pagination' );
 $GLOBALS['bitsnap_state'] = 'PAYMENT_STATE_PENDING';
 $batch_ids = array();
+$batch_date = time() - 3600;
 for ( $i = 0; $i < 45; ++$i ) {
 	$pending = smoke_order( $product );
 	$pending->update_meta_data( Meta::ORDER_ID, 'batch_' . $i );
 	$pending->update_meta_data( Meta::ENVIRONMENT, 'test' );
-	$pending->set_date_created( time() - 3600 - $i );
+	$pending->set_date_created( $batch_date - intdiv( $i, 5 ) );
 	$pending->save();
 	$batch_ids[] = $pending->get_id();
 }

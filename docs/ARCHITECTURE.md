@@ -184,7 +184,7 @@ All keys are read and written through `WC_Order` meta methods, so the plugin wor
 
 API destinations require public HTTPS and are checked again at each transport call. Only local/development environments with `BITSNAP_WC_ALLOW_INSECURE_API` explicitly enabled may use localhost, 127.0.0.1 or *.test over HTTP. Redirects are disabled. Debug logs use operational allowlists, excluding response bodies, buyer fields and payment URLs.
 
-Reconciliation advances a persistent page cursor across batches of 20 pending candidates, so continuously pending recent orders cannot monopolize every run. CI builds the Blocks script and runs the smoke suite in both HPOS modes; `bin/review-checks.sh` reproduces the Docker PHP matrix and smoke checks.
+Reconciliation sorts by creation date and order ID to keep equal timestamps stable across pages, and advances a persistent page cursor across batches of 20 pending candidates, so continuously pending recent orders cannot monopolize every run. CI builds the Blocks script and runs the smoke suite in both HPOS modes; `bin/review-checks.sh` reproduces the Docker PHP matrix and smoke checks.
 
 The latest checkout attempt remains in `order_id`. When an older attempt pays the exact current total, the order is paid with a note and `paid_order_id` retains the actual paying attempt for subsequent refunds. Failure and expiry from older attempts do not change status. Payments with a mismatched amount or currency are held for review.
 
