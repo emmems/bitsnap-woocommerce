@@ -108,6 +108,13 @@ Use the `bitsnap_wc_order_nip` filter to return it. It is validated before it is
 
 https://github.com/emmems/bitsnap-woocommerce. The block checkout script in `build/` is compiled from `assets/js/blocks/` with `npm install && npm run build`.
 
+== Screenshots ==
+
+1. The Bitsnap payment method at the WooCommerce checkout (block checkout).
+2. The order confirmation after the buyer paid with BLIK on the Bitsnap payment page.
+3. A paid order in WooCommerce, refunded from the order screen through Bitsnap.
+4. Plugin settings: connect your Bitsnap project, or paste an API key, and switch between test and live mode.
+
 == Changelog ==
 
 = 0.1.0 =

@@ -2,7 +2,7 @@
 
 Files here are not part of the plugin zip. The release workflow copies them to the `assets` directory of the plugin's SVN repository (`ASSETS_DIR: .wordpress-org`).
 
-Add before the first submission:
+Present (added 2026-11-04, screenshots from a live test against bitsnap.pl):
 
 - `icon-128x128.png` and `icon-256x256.png` (plugin icon)
 - `banner-772x250.png` and `banner-1544x500.png` (plugin page banner)
