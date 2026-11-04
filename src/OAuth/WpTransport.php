@@ -25,7 +25,7 @@ final class WpTransport implements Transport {
 	 * @return array{status:int,body:string}
 	 */
 	public function post( string $url, array $body, bool $json = false ): array {
-		$response = wp_remote_post(
+		$response = \Bitsnap\WooCommerce\Support\ApiUrl::post(
 			$url,
 			array(
 				'timeout'     => 20,

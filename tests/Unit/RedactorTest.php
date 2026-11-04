@@ -44,7 +44,7 @@ final class RedactorTest extends TestCase {
 		);
 		$this->assertSame( Redactor::MASK, $clean['Authorization'] );
 		$this->assertSame( Redactor::MASK, $clean['api_key'] );
-		$this->assertSame( 'https://x.test', $clean['url'] );
+		$this->assertSame( Redactor::MASK, $clean['url'] );
 		$this->assertStringNotContainsString( 'ccc', $clean['note'] );
 		$this->assertSame( Redactor::MASK, $clean['nested']['webhook_secret'] );
 		$this->assertSame( 3, $clean['nested']['count'] );

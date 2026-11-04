@@ -29,6 +29,7 @@ final class Redactor {
 	 */
 	public static function redact( string $text ): string {
 		$patterns = array(
+			'/\b(wc_order_)[A-Za-z0-9_\-]+/'         => '$1' . self::MASK,
 			'/\b(bs_(?:test|live)_)[A-Za-z0-9_\-]+/' => '$1' . self::MASK,
 			'/\b(bsat_|bsrt_)[A-Za-z0-9_\-\.]+/'     => '$1' . self::MASK,
 			'/\b(whsec_)[A-Za-z0-9_\-]+/'            => '$1' . self::MASK,
@@ -48,7 +49,7 @@ final class Redactor {
 	public static function redact_array( array $data ): array {
 		$clean = array();
 		foreach ( $data as $key => $value ) {
-			if ( is_string( $key ) && preg_match( '/authorization|secret|token|api[_-]?key/i', $key ) ) {
+			if ( is_string( $key ) && preg_match( '/authorization|secret|token|api[_-]?key|wcOrderKey|buyer|customer|email|phone|address|successUrl|cancelUrl|invoiceUrl|paymentUrl|^url$/i', $key ) ) {
 				$clean[ $key ] = self::MASK;
 			} elseif ( is_array( $value ) ) {
 				$clean[ $key ] = self::redact_array( $value );

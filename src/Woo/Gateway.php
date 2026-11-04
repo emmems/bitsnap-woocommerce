@@ -346,6 +346,10 @@ class Gateway extends \WC_Payment_Gateway {
 	 */
 	public function validate_api_base_url_field( $key, $value ) {
 		$value = is_null( $value ) ? '' : esc_url_raw( trim( wp_unslash( $value ) ), array( 'https', 'http' ) );
+		if ( '' !== $value && ! \Bitsnap\WooCommerce\Support\ApiUrl::valid( $value ) ) {
+			\WC_Admin_Settings::add_error( __( 'Use a public HTTPS Bitsnap API URL.', 'bitsnap-for-woocommerce' ) );
+			return $this->plugin->credentials()->base_url();
+		}
 		return '' === $value ? Credentials::DEFAULT_BASE_URL : rtrim( $value, '/' );
 	}
 

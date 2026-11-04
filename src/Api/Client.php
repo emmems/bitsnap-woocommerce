@@ -112,7 +112,13 @@ class Client {
 				if ( $attempts < 1 || ! $e->is_retryable() ) {
 					throw $e;
 				}
-				$this->logger->debug( 'Retryable error, trying once more', array( 'error' => $e->getMessage() ) );
+				$this->logger->debug(
+					'Retryable error, trying once more',
+					array(
+						'status' => $e->get_http_status(),
+						'code'   => $e->get_connect_code(),
+					)
+				);
 			}
 		}
 	}
@@ -143,13 +149,12 @@ class Client {
 		$this->logger->debug(
 			'Request ' . $service . '/' . $method,
 			array(
-				'url'             => $url,
 				'idempotency_key' => $idempotency_key,
 				'summary'         => $this->summarize( $body ),
 			)
 		);
 
-		$response = wp_remote_post(
+		$response = \Bitsnap\WooCommerce\Support\ApiUrl::post(
 			$url,
 			array(
 				'timeout'     => $this->timeout,
@@ -160,13 +165,13 @@ class Client {
 		);
 
 		if ( is_wp_error( $response ) ) {
-			$this->logger->error( 'Transport error calling ' . $service . '/' . $method . ': ' . $response->get_error_message() );
+			$this->logger->error( 'Transport error calling ' . $service . '/' . $method );
 			throw new ApiException( $response->get_error_message(), 0, 'network' );
 		}
 
 		$status = (int) wp_remote_retrieve_response_code( $response );
 		$raw    = (string) wp_remote_retrieve_body( $response );
-		$this->logger->debug( 'Response ' . $status . ' from ' . $service . '/' . $method, array( 'body' => $raw ) );
+		$this->logger->debug( 'Response ' . $status . ' from ' . $service . '/' . $method );
 
 		if ( $status >= 200 && $status < 300 ) {
 			$decoded = json_decode( $raw, true );
@@ -182,7 +187,7 @@ class Client {
 		$error = ErrorMapper::parse( $raw );
 		$text  = '' !== $error['message'] ? $error['message'] : 'HTTP ' . $status;
 		$this->logger->error(
-			sprintf( '%s/%s failed: HTTP %d %s %s', $service, $method, $status, $error['code'], $error['reason'] ) . ' ' . $text
+			sprintf( '%s/%s failed: HTTP %d %s %s', $service, $method, $status, $error['code'], $error['reason'] )
 		);
 		throw new ApiException( $text, $status, $error['code'], $error['reason'], $error['metadata'] );
 	}
@@ -212,13 +217,9 @@ class Client {
 	 */
 	private function summarize( array $body ): array {
 		$summary = array();
-		foreach ( $body as $key => $value ) {
-			if ( 'buyer' === $key ) {
-				$summary[ $key ] = '(omitted)';
-			} elseif ( 'lines' === $key && is_array( $value ) ) {
-				$summary[ $key ] = count( $value ) . ' lines';
-			} else {
-				$summary[ $key ] = $value;
+		foreach ( array( 'clientReferenceId', 'orderId', 'amount', 'total' ) as $key ) {
+			if ( isset( $body[ $key ] ) ) {
+				$summary[ $key ] = $body[ $key ];
 			}
 		}
 		return $summary;
