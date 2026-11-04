@@ -193,27 +193,18 @@ class Gateway extends \WC_Payment_Gateway {
 	}
 
 	/**
-	 * Help text with the webhook URL and the "Register webhook" button of a credentials section.
+	 * Help text of a credentials section: "Connect with Bitsnap" or the connection state, and the webhook URL.
 	 *
 	 * @param string $environment 'test' or 'live'.
 	 * @param string $webhook_url Webhook URL.
 	 * @return string HTML.
 	 */
 	private function credentials_help( string $environment, string $webhook_url ): string {
-		$connect = wp_nonce_url(
-			add_query_arg(
-				array(
-					'action' => 'bitsnap_oauth_connect',
-					'env'    => $environment,
-				),
-				admin_url( 'admin-post.php' )
-			),
-			'bitsnap_oauth_connect_' . $environment
-		);
-		$oauth   = new \Bitsnap\WooCommerce\OAuth\Service( $this->plugin->settings() );
+		$oauth = $this->plugin->oauth();
+
 		if ( $oauth->connected( $environment ) ) {
-			$info         = $oauth->info( $environment );
-			$disconnect   = wp_nonce_url(
+			$info       = $oauth->info( $environment );
+			$disconnect = wp_nonce_url(
 				add_query_arg(
 					array(
 						'action' => 'bitsnap_oauth_disconnect',
@@ -223,9 +214,28 @@ class Gateway extends \WC_Payment_Gateway {
 				),
 				'bitsnap_oauth_disconnect_' . $environment
 			);
-			$connect_text = sprintf( esc_html__( 'Connected to %1$s (%2$s). %3$sDisconnect%4$s', 'bitsnap-for-woocommerce' ), esc_html( $info['project_name'] ), esc_html( $environment ), '<a class="button" href="' . esc_url( $disconnect ) . '">', '</a>' );
-		} else {
-			$connect_text = '<a class="button button-primary" href="' . esc_url( $connect ) . '">' . esc_html__( 'Connect with Bitsnap', 'bitsnap-for-woocommerce' ) . '</a>'; }
+			return '<p>' . sprintf(
+				/* translators: 1: Bitsnap project name, 2: environment (test or live). */
+				esc_html__( 'Connected to %1$s (%2$s).', 'bitsnap-for-woocommerce' ),
+				'<strong>' . esc_html( $info['project_name'] ) . '</strong>',
+				esc_html( $environment )
+			) . ' <a class="button" href="' . esc_url( $disconnect ) . '">' . esc_html__( 'Disconnect', 'bitsnap-for-woocommerce' ) . '</a></p><p>' . sprintf(
+				/* translators: %s: webhook URL. */
+				esc_html__( 'Webhook URL: %s. It was registered in Bitsnap when you connected. While connected, the API key below is not used.', 'bitsnap-for-woocommerce' ),
+				'<code>' . esc_html( $webhook_url ) . '</code>'
+			) . '</p>';
+		}
+
+		$connect  = wp_nonce_url(
+			add_query_arg(
+				array(
+					'action' => 'bitsnap_oauth_connect',
+					'env'    => $environment,
+				),
+				admin_url( 'admin-post.php' )
+			),
+			'bitsnap_oauth_connect_' . $environment
+		);
 		$register = wp_nonce_url(
 			add_query_arg(
 				array(
@@ -237,9 +247,9 @@ class Gateway extends \WC_Payment_Gateway {
 			'bitsnap_register_webhook_' . $environment
 		);
 
-		return $connect_text . '<p>' . sprintf(
+		return '<p><a class="button button-primary" href="' . esc_url( $connect ) . '">' . esc_html__( 'Connect with Bitsnap', 'bitsnap-for-woocommerce' ) . '</a></p><p>' . sprintf(
 			/* translators: 1: webhook URL, 2: opening link tag for the Register webhook button, 3: closing link tag. */
-			__( 'Webhook URL: %1$s. Save the API key first, then %2$sRegister webhook%3$s to create it in Bitsnap and store its secret.', 'bitsnap-for-woocommerce' ),
+			__( 'Webhook URL: %1$s. Or enter an API key below and save it, then %2$sRegister webhook%3$s to create the webhook in Bitsnap and store its secret.', 'bitsnap-for-woocommerce' ),
 			'<code>' . esc_html( $webhook_url ) . '</code>',
 			'<a class="button button-secondary" href="' . esc_url( $register ) . '">',
 			'</a>'

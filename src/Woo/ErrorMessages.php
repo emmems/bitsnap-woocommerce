@@ -42,6 +42,8 @@ final class ErrorMessages {
 				);
 			case 'test_mode_only':
 				return __( 'This action works only with a test key.', 'bitsnap-for-woocommerce' );
+			case 'oauth_reconnect':
+				return __( 'The connection with Bitsnap is no longer valid. Click "Connect with Bitsnap" in the gateway settings to connect again.', 'bitsnap-for-woocommerce' );
 			case 'rate_limited':
 				return __( 'Bitsnap is limiting requests. Try again in a minute.', 'bitsnap-for-woocommerce' );
 			case 'amount_exceeds_refundable':

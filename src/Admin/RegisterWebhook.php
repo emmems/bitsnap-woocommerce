@@ -10,15 +10,15 @@ namespace Bitsnap\WooCommerce\Admin;
 use Bitsnap\WooCommerce\Api\ApiException;
 use Bitsnap\WooCommerce\Plugin;
 use Bitsnap\WooCommerce\Woo\ErrorMessages;
-use Bitsnap\WooCommerce\Woo\Gateway;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
 /**
- * Creates the webhook in Bitsnap (`WebhooksService.CreateWebhook`, needs the `webhooks:write`
- * scope) for `{site}/?wc-api=bitsnap` and stores its signing secret.
+ * The "Register webhook" button: creates the webhook in Bitsnap (`WebhooksService.CreateWebhook`, needs
+ * the `webhooks:write` scope) for `{site}/?wc-api=bitsnap` and stores its id and signing secret.
+ * {@see Registrar} does the work.
  */
 final class RegisterWebhook {
 
@@ -90,11 +90,11 @@ final class RegisterWebhook {
 			exit;
 		}
 
-		$url    = Gateway::webhook_url();
-		$client = $this->plugin->client( $environment );
+		$registrar = $this->plugin->webhooks();
+		$client    = $this->plugin->client( $environment );
 
 		try {
-			if ( $this->exists( $client, $url ) ) {
+			if ( '' !== $registrar->find_by_url( $client ) ) {
 				Notices::flash(
 					'error',
 					__( 'A webhook for this site already exists in Bitsnap. Its secret cannot be read again. Delete the webhook in Bitsnap and register it again, or paste its secret into the field below.', 'bitsnap-for-woocommerce' )
@@ -102,31 +102,17 @@ final class RegisterWebhook {
 				wp_safe_redirect( $back );
 				exit;
 			}
-
-			$response = $client->call(
-				'WebhooksService',
-				'CreateWebhook',
-				array(
-					'name'   => 'WooCommerce: ' . wp_parse_url( home_url(), PHP_URL_HOST ),
-					'url'    => $url,
-					'events' => self::EVENTS,
-				),
-				'woo-webhook-' . wp_generate_uuid4()
-			);
+			$registrar->register( $environment, $client );
 		} catch ( ApiException $e ) {
-			Notices::flash( 'error', ErrorMessages::describe( $e ) );
+			if ( 'missing_signing_secret' === $e->get_reason() ) {
+				Notices::flash( 'error', __( 'Bitsnap created the webhook but did not return its secret. Delete it in Bitsnap and try again.', 'bitsnap-for-woocommerce' ) );
+			} else {
+				Notices::flash( 'error', ErrorMessages::describe( $e ) );
+			}
 			wp_safe_redirect( $back );
 			exit;
 		}
 
-		$secret = isset( $response['signingSecret'] ) && is_string( $response['signingSecret'] ) ? $response['signingSecret'] : '';
-		if ( '' === $secret ) {
-			Notices::flash( 'error', __( 'Bitsnap created the webhook but did not return its secret. Delete it in Bitsnap and try again.', 'bitsnap-for-woocommerce' ) );
-			wp_safe_redirect( $back );
-			exit;
-		}
-
-		$this->plugin->settings()->set_secret( 'webhook_secret_' . $environment, $secret );
 		Notices::flash(
 			'success',
 			sprintf(
@@ -137,32 +123,5 @@ final class RegisterWebhook {
 		);
 		wp_safe_redirect( $back );
 		exit;
-	}
-
-	/**
-	 * Whether the environment already has a webhook for the URL.
-	 *
-	 * Needs `webhooks:read`. When that scope is missing the check is skipped and creation is tried.
-	 *
-	 * @param \Bitsnap\WooCommerce\Api\Client $client Client.
-	 * @param string                          $url    Webhook URL.
-	 * @return bool
-	 * @throws ApiException When the list call fails for a reason other than a missing scope.
-	 */
-	private function exists( $client, string $url ): bool {
-		try {
-			$response = $client->call( 'WebhooksService', 'ListWebhooks', array() );
-		} catch ( ApiException $e ) {
-			if ( 'missing_scope' === $e->get_reason() ) {
-				return false;
-			}
-			throw $e;
-		}
-		foreach ( (array) ( $response['webhooks'] ?? array() ) as $webhook ) {
-			if ( is_array( $webhook ) && isset( $webhook['url'] ) && $webhook['url'] === $url ) {
-				return true;
-			}
-		}
-		return false;
 	}
 }

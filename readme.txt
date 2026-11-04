@@ -19,7 +19,8 @@ Bitsnap for WooCommerce adds a payment method to your checkout. When a buyer cho
 
 * Works with the Cart and Checkout Blocks and with the classic checkout.
 * Compatible with High-Performance Order Storage.
-* Test mode and live mode with separate OAuth connections or manual API keys and webhook secrets.
+* "Connect with Bitsnap": sign in to Bitsnap, pick a project and approve. The plugin gets its own limited access and registers the webhook for you. Or paste an API key and webhook secret by hand.
+* Test mode and live mode, each connected on its own. Disconnecting one leaves the other.
 * Order status follows the payment: paid, failed, cancelled. Cash on delivery moves the order to "processing", a manual transfer to "on hold" until the money arrives.
 * Refunds from the WooCommerce order screen, full or partial, for payment methods that can be refunded through Bitsnap. Refunds you make in the Bitsnap dashboard also appear in WooCommerce.
 * Sends the cart as it is in WooCommerce: lines with VAT rates, shipping, fees, coupon discounts and the exact total.
@@ -31,7 +32,8 @@ Bitsnap for WooCommerce adds a payment method to your checkout. When a buyer cho
 **You need**
 
 * A Bitsnap account and project (https://bitsnap.pl).
-* A test API key, and later a live one, with the permissions `checkout:create`, `orders:read` and `refunds:write`. Add `customers:pii` to send buyer details and `webhooks:write` to register the webhook from the settings page.
+* Either "Connect with Bitsnap" (no key to copy), or a test API key and later a live one. A key needs the permissions `checkout:create`, `orders:read` and `refunds:write`. Add `customers:pii` to send buyer details and `webhooks:write` to register the webhook from the settings page.
+* An https address for your shop to use "Connect with Bitsnap" (a `localhost` address works for development). Without https, use an API key.
 * A shop that uses PLN, EUR, USD or GBP. The currency must also be enabled in your Bitsnap project.
 
 == External services ==
@@ -46,21 +48,33 @@ The base address is https://bitsnap.pl. It can be changed under "Advanced" in th
 
 **3. Refunds.** When you refund an order from the WooCommerce admin, the plugin sends the Bitsnap order ID, the amount and the reason to `https://bitsnap.pl/api/v1/bitsnap.v1.RefundsService/CreateRefund`.
 
-**4. Registering the webhook.** Only when an administrator clicks "Register webhook" in the settings, the plugin calls `https://bitsnap.pl/api/v1/bitsnap.v1.WebhooksService/ListWebhooks` and `https://bitsnap.pl/api/v1/bitsnap.v1.WebhooksService/CreateWebhook`. It sends the address of your webhook endpoint (`/?wc-api=bitsnap` on your site) and your site's host name as a label.
+**4. The webhook.** Only when an administrator clicks "Register webhook" or "Connect with Bitsnap", or "Disconnect", the plugin calls `https://bitsnap.pl/api/v1/bitsnap.v1.WebhooksService/ListWebhooks`, `CreateWebhook` and `DeleteWebhook`. It sends the address of your webhook endpoint (`/?wc-api=bitsnap` on your site) and your site's host name as a label. Bitsnap answers with the webhook id and its signing secret, which the plugin stores (the secret encrypted) and uses to delete the webhook when you disconnect.
 
 **5. Webhooks from Bitsnap.** Bitsnap sends signed payment and refund events to your shop at `/?wc-api=bitsnap`. The plugin accepts them only with a valid signature.
 
-When you choose Connect with Bitsnap, the plugin uses `https://bitsnap.pl/oauth/register`, `/oauth/authorize`, `/oauth/token` and `/oauth/revoke` to register the public client, obtain and refresh scoped tokens, and revoke the grant when disconnected. OAuth uses PKCE; the plugin stores tokens encrypted. Every API request carries your API key or OAuth access token. Bitsnap Terms of Service: https://bitsnap.pl/regulamin. Bitsnap Privacy Policy: https://bitsnap.pl/polityka-prywatnosci.
+**6. Connect with Bitsnap.** Only when an administrator clicks "Connect with Bitsnap", the plugin registers your shop as an OAuth client at `https://bitsnap.pl/oauth/register`. It sends the name "Bitsnap for WooCommerce" with your site's host name, the address of the plugin's callback page in your admin, and the plugin version. Then it sends the administrator's browser to `https://bitsnap.pl/oauth/authorize`, where they sign in to Bitsnap, pick a project and approve. The plugin exchanges the returned code at `/oauth/token` (with a PKCE code verifier), and later refreshes the token there before it expires, when the shop calls Bitsnap. "Disconnect" sends the refresh token to `/oauth/revoke`. The tokens are stored encrypted in your database, and each environment (test, live) has its own. Every API request carries your API key or the OAuth access token. Bitsnap Terms of Service: https://bitsnap.pl/regulamin. Bitsnap Privacy Policy: https://bitsnap.pl/polityka-prywatnosci.
 
 == Installation ==
 
 1. Install and activate WooCommerce, then this plugin.
-2. Go to WooCommerce > Settings > Payments > Bitsnap and click "Connect with Bitsnap" for test. Sign in, choose a project and approve access. The plugin registers the webhook and saves its secret.
-3. For manual setup, open Advanced settings, enter a test API key, save, then click "Register webhook". If the key cannot create webhooks, create one in Bitsnap for the URL shown and paste its secret.
-5. Place a test order and pay it in test mode.
-6. Connect the live environment separately, or enter its key under Advanced. Turn off "Test mode" and enable the payment method.
+2. Go to WooCommerce > Settings > Payments > Bitsnap and click "Connect with Bitsnap" under "Test credentials". Sign in, choose a project and approve access. The plugin registers the webhook and saves its secret.
+3. For a manual setup instead, enter a test API key under "Test credentials", save, then click "Register webhook". If the key cannot create webhooks, create one in Bitsnap for the URL shown and paste its secret.
+4. Place a test order and pay it in test mode.
+5. Connect the live environment the same way, under "Live credentials". Turn off "Test mode" and enable the payment method.
 
 == Frequently Asked Questions ==
+
+= What does "Connect with Bitsnap" give the plugin? =
+
+Limited access to one Bitsnap project and one environment (test or live): it can create payments, read orders, refund, and manage its own webhook. It cannot see other projects. You can end it any time with "Disconnect", or under "Connected apps" in your Bitsnap settings. If both a connection and an API key exist for an environment, the connection is used.
+
+= The settings say my connection is no longer valid. =
+
+Bitsnap revoked the access, or it expired. Click "Connect with Bitsnap" again. The webhook registered earlier is replaced by a new one.
+
+= "Connect with Bitsnap" says my shop needs https. =
+
+OAuth needs a secure address for the callback. Switch the shop to https, or use an API key. A `localhost` address works for development.
 
 = Do buyers pay on my site? =
 
@@ -93,7 +107,7 @@ https://github.com/emmems/bitsnap-woocommerce. The block checkout script in `bui
 == Changelog ==
 
 = 0.1.0 =
-* First release: redirect gateway, Cart and Checkout Blocks, HPOS, webhooks, return-page check, scheduled reconciliation, refunds, test and live mode.
+* First release: redirect gateway, Cart and Checkout Blocks, HPOS, webhooks, return-page check, scheduled reconciliation, refunds, test and live mode, Connect with Bitsnap (OAuth) or manual API keys.
 
 == Upgrade Notice ==
 

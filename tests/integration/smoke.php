@@ -58,7 +58,7 @@ add_filter(
 		);
 		$mock = $GLOBALS['bitsnap_mock'][ $method ] ?? array( 200, array() );
 		if ( is_callable( $mock ) ) {
-			$mock = $mock( json_decode( $args['body'], true ) );
+			$mock = $mock( json_decode( $args['body'], true ), $args['headers'] );
 		}
 		return array(
 			'headers'  => array(),
@@ -71,6 +71,92 @@ add_filter(
 	10,
 	3
 );
+
+// Mocked Bitsnap OAuth server: /oauth/register, /oauth/token, /oauth/revoke.
+$GLOBALS['oauth_requests'] = array();
+$GLOBALS['oauth_mock']     = array();
+
+add_filter(
+	'pre_http_request',
+	static function ( $pre, $args, $url ) {
+		$path = (string) wp_parse_url( $url, PHP_URL_PATH );
+		if ( 0 !== strpos( $path, '/oauth/' ) ) {
+			return $pre;
+		}
+		$fields                        = is_array( $args['body'] ) ? $args['body'] : json_decode( $args['body'], true );
+		$GLOBALS['oauth_requests'][]   = array(
+			'path'    => $path,
+			'fields'  => $fields,
+			'headers' => $args['headers'],
+		);
+		$mock   = $GLOBALS['oauth_mock'][ $path ] ?? null;
+		$answer = $mock ? $mock( $fields ) : array( 404, array() );
+		return array(
+			'headers'  => array(),
+			'body'     => is_string( $answer[1] ) ? $answer[1] : wp_json_encode( $answer[1] ),
+			'response' => array( 'code' => $answer[0], 'message' => '' ),
+			'cookies'  => array(),
+			'filename' => null,
+		);
+	},
+	10,
+	3
+);
+
+function smoke_oauth_requests( $path, $grant = null ) {
+	return array_values(
+		array_filter(
+			$GLOBALS['oauth_requests'],
+			static function ( $r ) use ( $path, $grant ) {
+				return $r['path'] === $path && ( null === $grant || ( $r['fields']['grant_type'] ?? '' ) === $grant );
+			}
+		)
+	);
+}
+
+class SmokeRedirect extends Exception {
+	public $location;
+	public function __construct( $location ) {
+		parent::__construct( 'redirect' );
+		$this->location = $location;
+	}
+}
+
+class SmokeDie extends Exception {}
+
+/** Runs a handler that ends in wp_safe_redirect() and exit; returns the redirect location. */
+function smoke_redirect_of( $fn ) {
+	$catch = static function ( $location ) {
+		throw new SmokeRedirect( $location );
+	};
+	add_filter( 'wp_redirect', $catch, 0 );
+	try {
+		$fn();
+	} catch ( SmokeRedirect $redirect ) {
+		return $redirect->location;
+	} finally {
+		remove_filter( 'wp_redirect', $catch, 0 );
+	}
+	return null;
+}
+
+/** Runs a handler and returns true when it ended in wp_die(). */
+function smoke_dies( $fn ) {
+	$handler = static function () {
+		return static function () {
+			throw new SmokeDie( 'die' );
+		};
+	};
+	add_filter( 'wp_die_handler', $handler );
+	try {
+		smoke_redirect_of( $fn );
+	} catch ( SmokeDie $die ) {
+		return true;
+	} finally {
+		remove_filter( 'wp_die_handler', $handler );
+	}
+	return false;
+}
 
 function smoke_last_request( $method ) {
 	$found = null;
@@ -500,6 +586,345 @@ try {
 }
 smoke_check( $registered, 'Bitsnap is registered in the Blocks payment method registry' );
 
+// ---------------------------------------------------------------- connect with Bitsnap (OAuth)
+
+smoke_section( 'Connect with Bitsnap (OAuth)' );
+use Bitsnap\WooCommerce\Admin\OAuthActions;
+use Bitsnap\WooCommerce\Admin\RegisterWebhook;
+use Bitsnap\WooCommerce\OAuth\Service as OAuthService;
+use Bitsnap\WooCommerce\OAuth\SettingsTokenStore;
+use Bitsnap\WooCommerce\OAuth\TransientStorage;
+use Bitsnap\WooCommerce\OAuth\WpTransport;
+
+$saved_mock                   = $GLOBALS['bitsnap_mock'];
+$GLOBALS['oauth_requests']    = array();
+$GLOBALS['bitsnap_requests']  = array();
+$GLOBALS['oauth_state']       = array(
+	'clients' => 0,
+	'n'       => 0,
+	'refresh' => array(),  // current refresh token by environment
+	'next_env' => 'test',
+	'reject'  => '',        // access token the API answers 401 to
+	'reject_client' => 0,   // answer invalid_client to this many token calls
+	'grant_error'   => '',  // answer this OAuth error to refresh calls
+);
+$GLOBALS['oauth_mock']['/oauth/register'] = static function () {
+	++$GLOBALS['oauth_state']['clients'];
+	return array( 201, array( 'client_id' => 'smoke-client-' . $GLOBALS['oauth_state']['clients'] ) );
+};
+$GLOBALS['oauth_mock']['/oauth/token'] = static function ( $f ) {
+	$st = &$GLOBALS['oauth_state'];
+	if ( $st['reject_client'] > 0 ) {
+		--$st['reject_client'];
+		return array( 401, array( 'error' => 'invalid_client' ) );
+	}
+	if ( 'authorization_code' === $f['grant_type'] ) {
+		$env = $st['next_env'];
+	} else {
+		if ( '' !== $st['grant_error'] ) {
+			return array( 400, array( 'error' => $st['grant_error'] ) );
+		}
+		$env = array_search( $f['refresh_token'], $st['refresh'], true );
+		if ( false === $env ) {
+			return array( 400, array( 'error' => 'invalid_grant' ) ); // A reused rotating token.
+		}
+	}
+	++$st['n'];
+	$st['refresh'][ $env ] = 'rt_smoke_' . $st['n'];
+	return array(
+		200,
+		array(
+			'access_token'         => 'bsat_smoke_' . $st['n'],
+			'refresh_token'        => 'rt_smoke_' . $st['n'],
+			'token_type'           => 'Bearer',
+			'expires_in'           => 3600,
+			'scope'                => 'checkout:create orders:read customers:pii refunds:write webhooks:read webhooks:write',
+			'bitsnap_project_id'   => '18',
+			'bitsnap_project_name' => 'Lece na kodach',
+			'bitsnap_environment'  => $env,
+		),
+	);
+};
+$GLOBALS['oauth_mock']['/oauth/revoke']         = static function () {
+	return array( 200, array() );
+};
+$GLOBALS['bitsnap_mock']['CreateWebhook']       = static function () {
+	++$GLOBALS['oauth_state']['n'];
+	return array( 200, array( 'webhook' => array( 'id' => 'wh_smoke_' . $GLOBALS['oauth_state']['n'], 'url' => Gateway::webhook_url() ), 'signingSecret' => 'whsec_OAUTH' . $GLOBALS['oauth_state']['n'] ) );
+};
+$GLOBALS['bitsnap_mock']['DeleteWebhook']       = array( 200, array() );
+$GLOBALS['bitsnap_mock']['ListWebhooks']        = array( 200, array( 'webhooks' => array() ) );
+$GLOBALS['bitsnap_mock']['GetOrder']            = static function ( $body, $headers ) {
+	if ( 'Bearer ' . $GLOBALS['oauth_state']['reject'] === ( $headers['Authorization'] ?? '' ) ) {
+		return array( 401, array( 'code' => 'unauthenticated', 'message' => 'token expired' ) );
+	}
+	return array( 200, array( 'order' => array( 'id' => 'ord_x', 'clientReferenceId' => $body['clientReferenceId'] ?? '', 'paymentState' => 'PAYMENT_STATE_PENDING' ) ) );
+};
+
+$admin_id = 1;
+wp_set_current_user( $admin_id );
+$actions  = new OAuthActions( $plugin );
+$callback = OAuthActions::callback_url();
+$flash    = static function () use ( $admin_id ) {
+	$notice = get_transient( 'bitsnap_wc_notice_' . $admin_id );
+	delete_transient( 'bitsnap_wc_notice_' . $admin_id );
+	return is_array( $notice ) ? $notice : array( 'type' => '', 'message' => '' );
+};
+$connect = static function ( $env, $mutate = null ) use ( $actions, $callback ) {
+	$_GET     = array( 'env' => $env );
+	$_REQUEST = array( '_wpnonce' => wp_create_nonce( 'bitsnap_oauth_connect_' . $env ) );
+	$url      = smoke_redirect_of( array( $actions, 'connect' ) );
+	if ( null === $url ) {
+		return array( 'url' => null );
+	}
+	parse_str( (string) wp_parse_url( $url, PHP_URL_QUERY ), $query );
+	$_GET     = array( 'state' => $query['state'] ?? '', 'code' => 'smoke-code' );
+	$_REQUEST = array();
+	if ( $mutate ) {
+		$_GET = $mutate( $_GET );
+	}
+	$back = smoke_redirect_of( array( $actions, 'callback' ) );
+	return array( 'url' => $url, 'query' => $query, 'back' => $back, 'get' => $_GET );
+};
+$raw_option = static function () {
+	return get_option( Settings::OPTION );
+};
+
+$html = ( new Gateway() )->generate_settings_html( ( new Gateway() )->get_form_fields(), false );
+smoke_check( false !== strpos( $html, 'Connect with Bitsnap' ) && false !== strpos( $html, 'action=bitsnap_oauth_connect' ), 'the settings page offers "Connect with Bitsnap"' );
+
+// Connect the test environment through the real handlers.
+$flow = $connect( 'test' );
+smoke_check( null !== $flow['url'] && 0 === strpos( $flow['url'], 'https://bitsnap.pl/oauth/authorize?' ), 'connect redirects to the Bitsnap consent page (not to the dashboard)', (string) $flow['url'] );
+$q = $flow['query'];
+smoke_check( 'code' === $q['response_type'] && 'S256' === $q['code_challenge_method'] && 'woocommerce offline_access' === $q['scope'] && 'test' === $q['environment'] && 'https://bitsnap.pl/api/v1' === $q['resource'] && $callback === $q['redirect_uri'] && 'smoke-client-1' === $q['client_id'], 'authorize URL has PKCE S256, scope, resource, environment and the callback' );
+smoke_check( 1 === count( smoke_oauth_requests( '/oauth/register' ) ) && true === ( $GLOBALS['oauth_requests'][0]['fields']['redirect_uris'] === array( $callback ) ), 'the site registered once, with its callback' );
+
+$tok = smoke_oauth_requests( '/oauth/token', 'authorization_code' );
+smoke_check( 1 === count( $tok ) && 'smoke-code' === $tok[0]['fields']['code'] && 43 === strlen( $tok[0]['fields']['code_verifier'] ) && 'https://bitsnap.pl/api/v1' === $tok[0]['fields']['resource'] && $callback === $tok[0]['fields']['redirect_uri'], 'the callback exchanged the code with a verifier, resource and redirect URI' );
+smoke_check( rtrim( strtr( base64_encode( hash( 'sha256', $tok[0]['fields']['code_verifier'], true ) ), '+/', '-_' ), '=' ) === $q['code_challenge'], 'the verifier matches the challenge that was sent' );
+smoke_check( 0 === strpos( (string) $flow['back'], admin_url( 'admin.php?page=wc-settings' ) ), 'the callback returns to the gateway settings' );
+$notice = $flash();
+smoke_check( 'success' === $notice['type'] && false !== strpos( $notice['message'], 'Lece na kodach' ), 'the merchant is told which project was connected', $notice['message'] );
+
+$raw = $raw_option();
+smoke_check( 0 === strpos( $raw['oauth_test_access'], 'bsenc1:' ) && 0 === strpos( $raw['oauth_test_refresh'], 'bsenc1:' ), 'access and refresh tokens are stored encrypted' );
+smoke_check( false === strpos( wp_json_encode( $raw ), 'bsat_smoke' ) && false === strpos( wp_json_encode( $raw ), 'rt_smoke' ), 'no plain token in the option' );
+smoke_check( 'Lece na kodach' === $raw['oauth_test_project_name'] && '18' === $raw['oauth_test_project_id'], 'project id and name are stored' );
+$webhook_calls = array_filter( $GLOBALS['bitsnap_requests'], static function ( $r ) { return 'CreateWebhook' === $r['method']; } );
+$webhook_call  = end( $webhook_calls );
+smoke_check( 'Bearer bsat_smoke_1' === $webhook_call['headers']['Authorization'] && Gateway::webhook_url() === $webhook_call['body']['url'], 'the webhook is registered right after connecting, with the new token' );
+smoke_check( 0 === strpos( $raw['webhook_id_test'], 'wh_smoke_' ) && 'whsec_OAUTH' === substr( $plugin->credentials()->webhook_secret( 'test' ), 0, 11 ), 'webhook id (plain) and secret (decrypted) are stored' );
+smoke_check( 'oauth' === $plugin->credentials()->mode( 'test' ) && 'bsat_smoke_1' === $plugin->credentials()->api_key( 'test' ), 'OAuth takes precedence over the manual key bs_test_SMOKEKEY' );
+smoke_check( 'manual' === $plugin->credentials()->mode( 'live' ) && 'bs_live_SMOKELIVE' === $plugin->credentials()->api_key( 'live' ), 'the live environment is untouched and still uses its manual key' );
+
+$html = ( new Gateway() )->generate_settings_html( ( new Gateway() )->get_form_fields(), false );
+smoke_check( false !== strpos( $html, 'Connected to <strong>Lece na kodach</strong> (test)' ) && false !== strpos( $html, 'action=bitsnap_oauth_disconnect' ), 'the settings page shows the connection and a Disconnect button' );
+smoke_check( false === strpos( $html, 'bsat_smoke' ) && false === strpos( $html, 'rt_smoke' ) && false === strpos( $html, 'bsenc1:' ), 'the settings page never prints a token' );
+
+// The state is single use.
+$replay = $flow['get'];
+$_GET   = $replay;
+smoke_redirect_of( array( $actions, 'callback' ) );
+$notice = $flash();
+smoke_check( 'error' === $notice['type'] && 1 === count( smoke_oauth_requests( '/oauth/token', 'authorization_code' ) ), 'replaying the callback is refused without reaching the server' );
+$_GET = array( 'state' => 'forged', 'code' => 'x' );
+smoke_redirect_of( array( $actions, 'callback' ) );
+smoke_check( 'error' === $flash()['type'] && 1 === count( smoke_oauth_requests( '/oauth/token', 'authorization_code' ) ), 'a forged state is refused' );
+
+// A user who may not manage WooCommerce.
+$sub = wp_insert_user( array( 'user_login' => 'smoke_sub_' . wp_rand( 1000, 9999 ), 'user_pass' => wp_generate_password(), 'role' => 'subscriber' ) );
+wp_set_current_user( $sub );
+$_GET     = array( 'env' => 'test' );
+$_REQUEST = array( '_wpnonce' => wp_create_nonce( 'bitsnap_oauth_connect_test' ) );
+smoke_check( smoke_dies( array( $actions, 'connect' ) ), 'a subscriber cannot start a connection' );
+$_GET = array( 'state' => 'x', 'code' => 'x' );
+smoke_check( smoke_dies( array( $actions, 'callback' ) ), 'a subscriber cannot use the callback' );
+$_GET     = array( 'env' => 'test' );
+$_REQUEST = array( '_wpnonce' => wp_create_nonce( 'bitsnap_oauth_disconnect_test' ) );
+smoke_check( smoke_dies( array( $actions, 'disconnect' ) ) && $plugin->oauth()->connected( 'test' ), 'a subscriber cannot disconnect' );
+wp_set_current_user( $admin_id );
+wp_delete_user( $sub );
+// A state of another user.
+$_GET     = array( 'env' => 'live' );
+$_REQUEST = array( '_wpnonce' => wp_create_nonce( 'bitsnap_oauth_connect_live' ) );
+$url      = smoke_redirect_of( array( $actions, 'connect' ) );
+parse_str( (string) wp_parse_url( $url, PHP_URL_QUERY ), $other );
+$other_admin = wp_insert_user( array( 'user_login' => 'smoke_adm_' . wp_rand( 1000, 9999 ), 'user_pass' => wp_generate_password(), 'role' => 'administrator' ) );
+wp_set_current_user( $other_admin );
+$_GET = array( 'state' => $other['state'], 'code' => 'x' );
+smoke_redirect_of( array( $actions, 'callback' ) );
+$other_notice = get_transient( 'bitsnap_wc_notice_' . $other_admin );
+delete_transient( 'bitsnap_wc_notice_' . $other_admin );
+smoke_check( is_array( $other_notice ) && 'error' === $other_notice['type'] && ! $plugin->oauth()->connected( 'live' ) && 1 === count( smoke_oauth_requests( '/oauth/token', 'authorization_code' ) ), 'a state started by another user is refused without a token request' );
+wp_set_current_user( $admin_id );
+wp_delete_user( $other_admin );
+
+// Refresh: a token that expires within a minute is replaced before the call.
+$settings->update( array( 'oauth_test_expires' => (string) ( time() + 30 ) ) );
+$before = count( smoke_oauth_requests( '/oauth/token', 'refresh_token' ) );
+$old_refresh = $GLOBALS['oauth_state']['refresh']['test'];
+$plugin->client( 'test' )->call( 'OrdersService', 'GetOrder', array( 'clientReferenceId' => '1' ) );
+$refreshes = smoke_oauth_requests( '/oauth/token', 'refresh_token' );
+$get       = smoke_last_request( 'GetOrder' );
+smoke_check( $before + 1 === count( $refreshes ) && $old_refresh === end( $refreshes )['fields']['refresh_token'], 'a token expiring within 60 s is refreshed before the call' );
+smoke_check( 0 === strpos( $get['headers']['Authorization'], 'Bearer bsat_smoke_' ) && 'Bearer bsat_smoke_1' !== $get['headers']['Authorization'], 'the call used the new access token', $get['headers']['Authorization'] );
+$raw = $raw_option();
+smoke_check( $GLOBALS['oauth_state']['refresh']['test'] === $plugin->settings()->get_secret( 'oauth_test_refresh' ) && $old_refresh !== $plugin->settings()->get_secret( 'oauth_test_refresh' ) && (int) $raw['oauth_test_expires'] > time() + 3000, 'the rotated refresh token and the new expiry are saved' );
+$n = count( smoke_oauth_requests( '/oauth/token', 'refresh_token' ) );
+$plugin->client( 'test' )->call( 'OrdersService', 'GetOrder', array( 'clientReferenceId' => '1' ) );
+smoke_check( $n === count( smoke_oauth_requests( '/oauth/token', 'refresh_token' ) ), 'a token with time left is not refreshed' );
+
+// A 401 refreshes and retries once.
+$GLOBALS['oauth_state']['reject'] = $plugin->settings()->get_secret( 'oauth_test_access' );
+$gets  = count( array_filter( $GLOBALS['bitsnap_requests'], static function ( $r ) { return 'GetOrder' === $r['method']; } ) );
+$n     = count( smoke_oauth_requests( '/oauth/token', 'refresh_token' ) );
+$reply = $plugin->client( 'test' )->call( 'OrdersService', 'GetOrder', array( 'clientReferenceId' => '2' ) );
+$gets2 = count( array_filter( $GLOBALS['bitsnap_requests'], static function ( $r ) { return 'GetOrder' === $r['method']; } ) );
+smoke_check( 'PAYMENT_STATE_PENDING' === ( $reply['order']['paymentState'] ?? '' ) && $gets + 2 === $gets2 && $n + 1 === count( smoke_oauth_requests( '/oauth/token', 'refresh_token' ) ), 'a 401 refreshes the token and repeats the call once' );
+$GLOBALS['oauth_state']['reject'] = '';
+// A 401 that persists is not retried forever.
+$GLOBALS['bitsnap_mock']['GetOrder'] = array( 401, array( 'code' => 'unauthenticated', 'message' => 'nope' ) );
+$gets = count( array_filter( $GLOBALS['bitsnap_requests'], static function ( $r ) { return 'GetOrder' === $r['method']; } ) );
+try {
+	$plugin->client( 'test' )->call( 'OrdersService', 'GetOrder', array( 'clientReferenceId' => '3' ) );
+	smoke_check( false, 'a persistent 401 throws' );
+} catch ( \Bitsnap\WooCommerce\Api\ApiException $e ) {
+	$gets2 = count( array_filter( $GLOBALS['bitsnap_requests'], static function ( $r ) { return 'GetOrder' === $r['method']; } ) );
+	smoke_check( 401 === $e->get_http_status() && $gets + 2 === $gets2, 'a persistent 401 is retried once, then reported' );
+}
+$GLOBALS['bitsnap_mock']['GetOrder'] = static function ( $body, $headers ) {
+	return array( 200, array( 'order' => array( 'id' => 'ord_x', 'clientReferenceId' => $body['clientReferenceId'] ?? '', 'paymentState' => 'PAYMENT_STATE_PENDING' ) ) );
+};
+
+// The refresh lock: the loser waits, re-reads the database and uses the winner's tokens.
+$other_process = static function () use ( $wpdb ) {
+	// What another PHP request does: writes new tokens to the database behind this request's cache.
+	$row = maybe_unserialize( $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", Settings::OPTION ) ) );
+	$row['oauth_test_access']  = Plugin::instance()->settings()->seal( 'bsat_from_winner' );
+	$row['oauth_test_refresh'] = Plugin::instance()->settings()->seal( 'rt_from_winner' );
+	$row['oauth_test_expires'] = (string) ( time() + 3500 );
+	$wpdb->update( $wpdb->options, array( 'option_value' => maybe_serialize( $row ) ), array( 'option_name' => Settings::OPTION ) );
+	delete_transient( 'bitsnap_oauth_refresh_test' );
+};
+$plugin->settings()->update( array( 'oauth_test_expires' => (string) ( time() + 10 ) ) );
+$storage = new TransientStorage();
+smoke_check( true === $storage->add( 'bitsnap_smoke_lock', 1, 30 ) && false === $storage->add( 'bitsnap_smoke_lock', 1, 30 ), 'the transient lock admits one holder' );
+$storage->delete( 'bitsnap_smoke_lock' );
+set_transient( 'bitsnap_oauth_refresh_test', 1, 30 );
+$waits  = 0;
+$loser  = new OAuthService(
+	new WpTransport(),
+	$storage,
+	new SettingsTokenStore( $plugin->settings() ),
+	'https://bitsnap.pl',
+	$callback,
+	'Smoke',
+	'dev',
+	null,
+	static function () use ( &$waits, $other_process ) {
+		if ( 1 === ++$waits ) {
+			$other_process();
+		}
+	}
+);
+$n = count( smoke_oauth_requests( '/oauth/token', 'refresh_token' ) );
+$token = $loser->access_token( 'test' );
+smoke_check( 'bsat_from_winner' === $token && $n === count( smoke_oauth_requests( '/oauth/token', 'refresh_token' ) ), 'the loser of the lock uses the tokens the winner saved and does not refresh', $token );
+// Put a valid pair back so the next checks have a current refresh token.
+$GLOBALS['oauth_state']['refresh']['test'] = 'rt_from_winner';
+
+// Registration is lost: invalid_client re-registers and retries.
+$plugin->settings()->update( array( 'oauth_test_expires' => (string) ( time() + 10 ) ) );
+$GLOBALS['oauth_state']['reject_client'] = 1;
+$clients = $GLOBALS['oauth_state']['clients'];
+$plugin->client( 'test' )->call( 'OrdersService', 'GetOrder', array( 'clientReferenceId' => '4' ) );
+smoke_check( $clients + 1 === $GLOBALS['oauth_state']['clients'] && 'smoke-client-' . ( $clients + 1 ) === $plugin->settings()->get( 'oauth_client_id' ), 'invalid_client makes the site register again and store the new client' );
+$all_refreshes = smoke_oauth_requests( '/oauth/token', 'refresh_token' );
+$last          = end( $all_refreshes );
+smoke_check( 'smoke-client-' . ( $clients + 1 ) === $last['fields']['client_id'], 'the retry used the new client id' );
+
+// Connect live as well; a revoked live grant must not touch test.
+$GLOBALS['oauth_state']['next_env'] = 'live';
+$live = $connect( 'live' );
+smoke_check( 'success' === $flash()['type'] && $plugin->oauth()->connected( 'live' ) && $plugin->oauth()->connected( 'test' ), 'live connects on its own, test stays connected' );
+smoke_check( 'oauth' === $plugin->credentials()->mode( 'live' ) && $plugin->credentials()->api_key( 'live' ) !== $plugin->credentials()->api_key( 'test' ), 'each environment has its own token' );
+$GLOBALS['oauth_state']['grant_error'] = 'invalid_grant';
+$plugin->settings()->update( array( 'oauth_live_expires' => (string) ( time() + 5 ) ) );
+try {
+	$plugin->client( 'live' )->call( 'OrdersService', 'GetOrder', array( 'clientReferenceId' => '5' ) );
+	smoke_check( false, 'a revoked grant throws' );
+} catch ( \Bitsnap\WooCommerce\Api\ApiException $e ) {
+	smoke_check( 'oauth_reconnect' === $e->get_reason() && false !== strpos( \Bitsnap\WooCommerce\Woo\ErrorMessages::describe( $e ), 'Connect with Bitsnap' ), 'a revoked grant gives a clear "connect again" error' );
+}
+$GLOBALS['oauth_state']['grant_error'] = '';
+smoke_check( ! $plugin->oauth()->connected( 'live' ) && $plugin->oauth()->connected( 'test' ) && 'bs_live_SMOKELIVE' === $plugin->credentials()->api_key( 'live' ), 'only the revoked environment was cleared; it falls back to its manual key' );
+
+// Disconnect test: webhook deleted by id, grant revoked, only test cleared.
+$test_refresh = $plugin->settings()->get_secret( 'oauth_test_refresh' );
+$stored_id    = $raw_option()['webhook_id_test'];
+$live_before  = array( $raw_option()['webhook_id_live'] ?? '', $plugin->credentials()->webhook_secret( 'live' ), $plugin->credentials()->api_key( 'live' ) );
+$GLOBALS['bitsnap_requests'] = array();
+$_GET     = array( 'env' => 'test' );
+$_REQUEST = array( '_wpnonce' => wp_create_nonce( 'bitsnap_oauth_disconnect_test' ) );
+smoke_redirect_of( array( $actions, 'disconnect' ) );
+$del = smoke_last_request( 'DeleteWebhook' );
+smoke_check( null !== $del && array( 'id' => $stored_id ) === $del['body'], 'disconnect deletes the webhook by its stored id', wp_json_encode( $del['body'] ?? null ) );
+smoke_check( null === smoke_last_request( 'ListWebhooks' ), 'no listing when the id is known' );
+$rev = smoke_oauth_requests( '/oauth/revoke' );
+smoke_check( 1 === count( $rev ) && $test_refresh === $rev[0]['fields']['token'] && 'refresh_token' === $rev[0]['fields']['token_type_hint'] && '' !== $rev[0]['fields']['client_id'], 'the refresh token is revoked with the client id' );
+$raw = $raw_option();
+$left = array_filter( array_keys( $raw ), static function ( $k ) { return 0 === strpos( $k, 'oauth_test_' ) || 'webhook_id_test' === $k || 'webhook_secret_test' === $k; } );
+smoke_check( array() === $left, 'every OAuth value, the webhook id and the webhook secret of test are gone', implode( ',', $left ) );
+smoke_check( 'manual' === $plugin->credentials()->mode( 'test' ) && 'bs_test_SMOKEKEY' === $plugin->credentials()->api_key( 'test' ), 'the test environment is back on its manual key' );
+smoke_check( 'success' === $flash()['type'], 'the merchant sees that it worked' );
+smoke_check( isset( $raw['oauth_client_id'] ) && '' !== $live_before[1] && array( $raw['webhook_id_live'] ?? '', $plugin->credentials()->webhook_secret( 'live' ), $plugin->credentials()->api_key( 'live' ) ) === $live_before, 'disconnecting test left the live webhook and key as they were' );
+
+// An install that has no stored webhook id finds it with ListWebhooks.
+$GLOBALS['oauth_state']['next_env'] = 'test';
+$connect( 'test' );
+$flash();
+$all = $plugin->settings()->all();
+unset( $all['webhook_id_test'] );
+update_option( Settings::OPTION, $all );
+$GLOBALS['bitsnap_mock']['ListWebhooks'] = array( 200, array( 'webhooks' => array( array( 'id' => 'wh_other', 'url' => 'https://elsewhere.example/?wc-api=bitsnap' ), array( 'id' => 'wh_listed', 'url' => Gateway::webhook_url() ) ) ) );
+$GLOBALS['bitsnap_requests'] = array();
+$_GET     = array( 'env' => 'test' );
+$_REQUEST = array( '_wpnonce' => wp_create_nonce( 'bitsnap_oauth_disconnect_test' ) );
+smoke_redirect_of( array( $actions, 'disconnect' ) );
+$del = smoke_last_request( 'DeleteWebhook' );
+smoke_check( null !== smoke_last_request( 'ListWebhooks' ) && array( 'id' => 'wh_listed' ) === ( $del['body'] ?? null ), 'without a stored id, disconnect finds the webhook by URL and deletes it by id' );
+$flash();
+
+// A failing delete is reported, and the grant is still revoked.
+$GLOBALS['oauth_state']['next_env'] = 'test';
+$connect( 'test' );
+$flash();
+$GLOBALS['bitsnap_mock']['DeleteWebhook'] = array( 500, array( 'code' => 'internal', 'message' => 'down' ) );
+$_GET     = array( 'env' => 'test' );
+$_REQUEST = array( '_wpnonce' => wp_create_nonce( 'bitsnap_oauth_disconnect_test' ) );
+smoke_redirect_of( array( $actions, 'disconnect' ) );
+$notice = $flash();
+smoke_check( 'warning' === $notice['type'] && ! $plugin->oauth()->connected( 'test' ), 'a webhook that cannot be deleted gives a warning, and the store is disconnected anyway' );
+$GLOBALS['bitsnap_mock']['DeleteWebhook'] = array( 200, array() );
+
+// The manual "Register webhook" button stores the id too.
+$GLOBALS['bitsnap_mock']['ListWebhooks'] = array( 200, array( 'webhooks' => array() ) );
+$register = new RegisterWebhook( $plugin );
+$_GET     = array( 'env' => 'test' );
+$_REQUEST = array( '_wpnonce' => wp_create_nonce( 'bitsnap_register_webhook_test' ) );
+smoke_redirect_of( array( $register, 'handle' ) );
+$raw = $raw_option();
+smoke_check( 0 === strpos( (string) ( $raw['webhook_id_test'] ?? '' ), 'wh_smoke_' ) && 'whsec_OAUTH' === substr( $plugin->credentials()->webhook_secret( 'test' ), 0, 11 ) && 'success' === $flash()['type'], 'manual "Register webhook" stores the webhook id and secret' );
+$last = smoke_last_request( 'CreateWebhook' );
+smoke_check( 'Bearer bs_test_SMOKEKEY' === $last['headers']['Authorization'], 'the manual registration used the manual key' );
+
+$_GET     = array();
+$_REQUEST = array();
+$GLOBALS['bitsnap_mock'] = $saved_mock;
+// Put back what the later sections of this script expect.
+$plugin->settings()->set_secret( 'webhook_secret_test', 'whsec_SMOKESECRET' );
+
 // ---------------------------------------------------------------- logging
 
 smoke_section( 'Logging' );
@@ -510,6 +935,7 @@ foreach ( glob( $log_dir . '*bitsnap*' ) ?: array() as $file ) {
 }
 smoke_check( '' !== $log_text, 'the debug log has entries' );
 smoke_check( false === strpos( $log_text, 'SMOKEKEY' ) && false === strpos( $log_text, 'SMOKESECRET' ) && false === strpos( $log_text, 'bs_test_NEW' ), 'the log contains no key or secret' );
+smoke_check( false === strpos( $log_text, 'bsat_smoke' ) && false === strpos( $log_text, 'rt_smoke' ) && false === strpos( $log_text, 'rt_from_winner' ) && false === strpos( $log_text, 'bsat_from_winner' ) && false === strpos( $log_text, 'whsec_OAUTH' ), 'the log contains no OAuth token or webhook secret' );
 smoke_check( false === strpos( $log_text, 'anna@example.com' ), 'the log contains no buyer email' );
 
 echo "\n{$GLOBALS['smoke_checks']} checks, {$GLOBALS['smoke_failures']} failed.\n";

@@ -5,8 +5,8 @@ msgstr ""
 "Project-Id-Version: Bitsnap for WooCommerce 0.1.0\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/bitsnap-for-"
 "woocommerce\n"
-"POT-Creation-Date: 2026-11-04T05:30:56+00:00\n"
-"PO-Revision-Date: 2026-11-03 12:00+0000\n"
+"POT-Creation-Date: 2026-11-04T05:43:02+00:00\n"
+"PO-Revision-Date: 2026-11-04 12:00+0000\n"
 "Last-Translator: Bitsnap\n"
 "Language-Team: Polish\n"
 "Language: pl_PL\n"
@@ -70,28 +70,96 @@ msgstr ""
 "dzieje, gdy zmienią się klucze bezpieczeństwa strony (AUTH_KEY, "
 "SECURE_AUTH_KEY). Wpisz klucz i sekret webhooka ponownie."
 
-#: src/Admin/OAuthActions.php:27 src/Admin/OAuthActions.php:54
-#: src/Admin/OAuthActions.php:107 src/Admin/RegisterWebhook.php:75
+#. translators: 1: Bitsnap project name, 2: environment (test or live), 3: reason.
+#: src/Admin/OAuthActions.php:123
+#, php-format
+msgid ""
+"Connected to %1$s (%2$s), but the webhook could not be registered: %3$s Use "
+"\"Register webhook\" below, or create the webhook in Bitsnap."
+msgstr ""
+"Połączono z %1$s (%2$s), ale nie udało się zarejestrować webhooka: %3$s Użyj "
+"przycisku „Zarejestruj webhook” poniżej albo utwórz webhook w Bitsnap."
+
+#: src/Admin/OAuthActions.php:126
+msgid "Bitsnap did not return its secret."
+msgstr "Bitsnap nie zwrócił jego sekretu."
+
+#. translators: 1: Bitsnap project name, 2: environment (test or live).
+#: src/Admin/OAuthActions.php:137
+#, php-format
+msgid ""
+"Connected to %1$s (%2$s). The webhook is registered and its secret is saved."
+msgstr ""
+"Połączono z %1$s (%2$s). Webhook jest zarejestrowany, a jego sekret zapisany."
+
+#: src/Admin/OAuthActions.php:164
+msgid ""
+"Disconnected this store from Bitsnap, but Bitsnap did not confirm that the "
+"webhook was deleted and access revoked. Check \"Connected apps\" in your "
+"Bitsnap settings."
+msgstr ""
+"Sklep został odłączony od Bitsnap, ale Bitsnap nie potwierdził usunięcia "
+"webhooka i cofnięcia dostępu. Sprawdź „Połączone aplikacje” w ustawieniach "
+"Bitsnap."
+
+#: src/Admin/OAuthActions.php:166
+msgid "Disconnected from Bitsnap."
+msgstr "Odłączono od Bitsnap."
+
+#: src/Admin/OAuthActions.php:179 src/Admin/RegisterWebhook.php:71
+msgid "Invalid request."
+msgstr "Nieprawidłowe żądanie."
+
+#: src/Admin/OAuthActions.php:191 src/Admin/RegisterWebhook.php:75
 msgid "You are not allowed to do this."
 msgstr "Nie masz uprawnień do tej czynności."
 
-#: src/Admin/OAuthActions.php:60
+#: src/Admin/OAuthMessages.php:30
+msgid ""
+"Connect with Bitsnap needs a secure (https) address for this store. Use a "
+"manual API key instead, or switch the store to https."
+msgstr ""
+"Połączenie z Bitsnap wymaga bezpiecznego adresu (https) sklepu. Użyj ręcznie "
+"wpisanego klucza API albo przełącz sklep na https."
+
+#: src/Admin/OAuthMessages.php:32
 msgid ""
 "The Bitsnap connection expired or could not be verified. Please connect "
 "again."
 msgstr ""
+"Połączenie z Bitsnap wygasło lub nie dało się go zweryfikować. Połącz się "
+"ponownie."
 
-#: src/Admin/OAuthActions.php:97
-msgid "Connected with Bitsnap and registered the webhook."
+#: src/Admin/OAuthMessages.php:34
+msgid "Access was not granted in Bitsnap, so nothing was connected."
+msgstr "Nie przyznano dostępu w Bitsnap, więc nic nie zostało połączone."
+
+#: src/Admin/OAuthMessages.php:36
+msgid ""
+"Bitsnap could not register this store. Check the API base URL and try again."
 msgstr ""
+"Bitsnap nie mógł zarejestrować tego sklepu. Sprawdź bazowy adres API i "
+"spróbuj ponownie."
 
-#: src/Admin/OAuthActions.php:129
-msgid "Disconnected from Bitsnap."
+#: src/Admin/OAuthMessages.php:40
+msgid "Bitsnap could not be reached. Try again in a moment."
+msgstr "Nie udało się połączyć z Bitsnap. Spróbuj ponownie za chwilę."
+
+#: src/Admin/OAuthMessages.php:42
+msgid ""
+"Bitsnap returned an answer this plugin does not understand. Update the "
+"plugin and try again."
 msgstr ""
+"Bitsnap zwrócił odpowiedź, której wtyczka nie rozumie. Zaktualizuj wtyczkę i "
+"spróbuj ponownie."
 
-#: src/Admin/RegisterWebhook.php:71
-msgid "Invalid request."
-msgstr "Nieprawidłowe żądanie."
+#: src/Admin/OAuthMessages.php:45
+msgid "The connection with Bitsnap is no longer valid. Connect again."
+msgstr "Połączenie z Bitsnap przestało być ważne. Połącz się ponownie."
+
+#: src/Admin/OAuthMessages.php:47
+msgid "Bitsnap did not complete the connection. Please try connecting again."
+msgstr "Bitsnap nie dokończył połączenia. Spróbuj połączyć się ponownie."
 
 #. translators: %s: environment, test or live.
 #: src/Admin/RegisterWebhook.php:85
@@ -109,7 +177,7 @@ msgstr ""
 "odczytać ponownie. Usuń webhook w Bitsnap i zarejestruj go jeszcze raz albo "
 "wklej jego sekret w polu poniżej."
 
-#: src/Admin/RegisterWebhook.php:124
+#: src/Admin/RegisterWebhook.php:108
 msgid ""
 "Bitsnap created the webhook but did not return its secret. Delete it in "
 "Bitsnap and try again."
@@ -118,29 +186,12 @@ msgstr ""
 "spróbuj ponownie."
 
 #. translators: %s: environment, test or live.
-#: src/Admin/RegisterWebhook.php:134
+#: src/Admin/RegisterWebhook.php:120
 #, php-format
 msgid "The %s webhook was registered in Bitsnap and its secret was saved."
 msgstr "Webhook (%s) został zarejestrowany w Bitsnap, a jego sekret zapisany."
 
-#: src/OAuth/Service.php:69
-msgid ""
-"Bitsnap could not register this store. Check the API base URL and try again."
-msgstr ""
-
-#: src/OAuth/Service.php:72
-msgid "Bitsnap returned an invalid client registration response."
-msgstr ""
-
-#: src/OAuth/Service.php:98
-msgid "Bitsnap authorization failed. Please try connecting again."
-msgstr ""
-
-#: src/OAuth/Service.php:100
-msgid "Bitsnap authorization failed."
-msgstr ""
-
-#: src/Plugin.php:111
+#: src/Plugin.php:117
 msgid "Settings"
 msgstr "Ustawienia"
 
@@ -175,14 +226,22 @@ msgid "This action works only with a test key."
 msgstr "Ta czynność działa tylko z kluczem testowym."
 
 #: src/Woo/ErrorMessages.php:46
+msgid ""
+"The connection with Bitsnap is no longer valid. Click \"Connect with "
+"Bitsnap\" in the gateway settings to connect again."
+msgstr ""
+"Połączenie z Bitsnap przestało być ważne. Kliknij „Połącz z Bitsnap” w "
+"ustawieniach bramki, aby połączyć się ponownie."
+
+#: src/Woo/ErrorMessages.php:48
 msgid "Bitsnap is limiting requests. Try again in a minute."
 msgstr "Bitsnap ogranicza liczbę żądań. Spróbuj ponownie za minutę."
 
-#: src/Woo/ErrorMessages.php:48
+#: src/Woo/ErrorMessages.php:50
 msgid "The amount is higher than what is left to refund on this payment."
 msgstr "Kwota jest wyższa niż to, co zostało do zwrotu z tej płatności."
 
-#: src/Woo/ErrorMessages.php:50
+#: src/Woo/ErrorMessages.php:52
 msgid ""
 "This payment method cannot be refunded through Bitsnap. Return the money "
 "yourself, then record it with \"Refund manually\"."
@@ -190,30 +249,30 @@ msgstr ""
 "Tej płatności nie można zwrócić przez Bitsnap. Zwróć pieniądze samodzielnie, "
 "a potem zapisz zwrot przyciskiem „Zwrot ręczny”."
 
-#: src/Woo/ErrorMessages.php:52
+#: src/Woo/ErrorMessages.php:54
 msgid "The Bitsnap order has not been paid, so there is nothing to refund."
 msgstr "Zamówienie w Bitsnap nie zostało opłacone, więc nie ma czego zwracać."
 
 #. translators: %s: error detail from the API, usually the name of the invalid field.
-#: src/Woo/ErrorMessages.php:55
+#: src/Woo/ErrorMessages.php:57
 #, php-format
 msgid "Bitsnap rejected the request: %s"
 msgstr "Bitsnap odrzucił żądanie: %s"
 
 #. translators: %s: technical error message.
-#: src/Woo/ErrorMessages.php:60
+#: src/Woo/ErrorMessages.php:62
 #, php-format
 msgid "Could not reach Bitsnap: %s"
 msgstr "Nie udało się połączyć z Bitsnap: %s"
 
-#: src/Woo/ErrorMessages.php:63
+#: src/Woo/ErrorMessages.php:65
 msgid ""
 "The API key is invalid or was revoked. Check the key in the gateway settings."
 msgstr ""
 "Klucz API jest nieprawidłowy lub został unieważniony. Sprawdź klucz w "
 "ustawieniach bramki."
 
-#: src/Woo/ErrorMessages.php:66
+#: src/Woo/ErrorMessages.php:68
 msgid ""
 "The API key is not allowed to do this. Check its permissions in Bitsnap."
 msgstr ""
@@ -221,7 +280,7 @@ msgstr ""
 "Bitsnap."
 
 #. translators: %s: error message from the API.
-#: src/Woo/ErrorMessages.php:69
+#: src/Woo/ErrorMessages.php:71
 #, php-format
 msgid "Bitsnap returned an error: %s"
 msgstr "Bitsnap zwrócił błąd: %s"
@@ -283,23 +342,27 @@ msgstr ""
 msgid "Switch it off when you are ready to take real payments."
 msgstr "Wyłącz, gdy będziesz gotowy przyjmować prawdziwe płatności."
 
-#: src/Woo/Gateway.php:141
+#: src/Woo/Gateway.php:138
+msgid "Advanced"
+msgstr "Zaawansowane"
+
+#: src/Woo/Gateway.php:146
 msgid "Test credentials"
 msgstr "Dane dostępowe testowe"
 
-#: src/Woo/Gateway.php:141
+#: src/Woo/Gateway.php:146
 msgid "Live credentials"
 msgstr "Dane dostępowe produkcyjne"
 
-#: src/Woo/Gateway.php:146
+#: src/Woo/Gateway.php:151
 msgid "Test API key"
 msgstr "Testowy klucz API"
 
-#: src/Woo/Gateway.php:146
+#: src/Woo/Gateway.php:151
 msgid "Live API key"
 msgstr "Produkcyjny klucz API"
 
-#: src/Woo/Gateway.php:149
+#: src/Woo/Gateway.php:154
 msgid ""
 "Starts with bs_test_. Needs the checkout:create, orders:read and "
 "refunds:write permissions, and customers:pii to send buyer details."
@@ -307,20 +370,20 @@ msgstr ""
 "Zaczyna się od bs_test_. Wymaga uprawnień checkout:create, orders:read i "
 "refunds:write oraz customers:pii, aby wysyłać dane kupującego."
 
-#: src/Woo/Gateway.php:150
+#: src/Woo/Gateway.php:155
 msgid "Starts with bs_live_. Needs the same permissions as the test key."
 msgstr ""
 "Zaczyna się od bs_live_. Wymaga tych samych uprawnień co klucz testowy."
 
-#: src/Woo/Gateway.php:154
+#: src/Woo/Gateway.php:159
 msgid "Test webhook secret"
 msgstr "Testowy sekret webhooka"
 
-#: src/Woo/Gateway.php:154
+#: src/Woo/Gateway.php:159
 msgid "Live webhook secret"
 msgstr "Produkcyjny sekret webhooka"
 
-#: src/Woo/Gateway.php:156
+#: src/Woo/Gateway.php:161
 msgid ""
 "Starts with whsec_. Filled in for you by \"Register webhook\", or paste the "
 "secret of a webhook you created in Bitsnap."
@@ -328,28 +391,24 @@ msgstr ""
 "Zaczyna się od whsec_. Uzupełnia go przycisk „Zarejestruj webhook” albo "
 "wklej sekret webhooka utworzonego w Bitsnap."
 
-#: src/Woo/Gateway.php:162
-msgid "Advanced"
-msgstr "Zaawansowane"
-
-#: src/Woo/Gateway.php:166
+#: src/Woo/Gateway.php:167
 msgid "API base URL"
 msgstr "Adres bazowy API"
 
-#: src/Woo/Gateway.php:168
+#: src/Woo/Gateway.php:169
 msgid "Leave as it is unless Bitsnap support tells you to change it."
 msgstr "Nie zmieniaj, chyba że poprosi o to wsparcie Bitsnap."
 
-#: src/Woo/Gateway.php:173
+#: src/Woo/Gateway.php:174
 msgid "Debug log"
 msgstr "Dziennik debugowania"
 
-#: src/Woo/Gateway.php:175
+#: src/Woo/Gateway.php:176
 msgid "Log API calls and webhooks"
 msgstr "Zapisuj wywołania API i webhooki"
 
 #. translators: %s: link to the WooCommerce logs page.
-#: src/Woo/Gateway.php:178
+#: src/Woo/Gateway.php:179
 #, php-format
 msgid ""
 "Writes to WooCommerce > Status > Logs (source \"bitsnap\"). Keys and secrets "
@@ -358,54 +417,70 @@ msgstr ""
 "Zapisuje do WooCommerce > Status > Logi (źródło „bitsnap”). Klucze i sekrety "
 "są usuwane z dziennika. %s"
 
-#: src/Woo/Gateway.php:179
+#: src/Woo/Gateway.php:180
 msgid "Open logs"
 msgstr "Otwórz logi"
 
-#: src/Woo/Gateway.php:225
+#. translators: 1: Bitsnap project name, 2: environment (test or live).
+#: src/Woo/Gateway.php:219
 #, php-format
-msgid "Connected to %1$s (%2$s). %3$sDisconnect%4$s"
-msgstr ""
+msgid "Connected to %1$s (%2$s)."
+msgstr "Połączono z %1$s (%2$s)."
 
-#: src/Woo/Gateway.php:227
-msgid "Connect with Bitsnap"
-msgstr ""
+#: src/Woo/Gateway.php:222
+msgid "Disconnect"
+msgstr "Odłącz"
 
-#. translators: 1: webhook URL, 2: opening link tag for the Register webhook button, 3: closing link tag.
-#: src/Woo/Gateway.php:241
+#. translators: %s: webhook URL.
+#: src/Woo/Gateway.php:224
 #, php-format
 msgid ""
-"Webhook URL: %1$s. Save the API key first, then %2$sRegister webhook%3$s to "
-"create it in Bitsnap and store its secret."
+"Webhook URL: %s. It was registered in Bitsnap when you connected. While "
+"connected, the API key below is not used."
 msgstr ""
-"Adres webhooka: %1$s. Najpierw zapisz klucz API, potem %2$szarejestruj "
-"webhook%3$s, aby utworzyć go w Bitsnap i zapisać jego sekret."
+"Adres webhooka: %s. Został zarejestrowany w Bitsnap podczas łączenia. Dopóki "
+"sklep jest połączony, klucz API poniżej nie jest używany."
 
-#: src/Woo/Gateway.php:271
+#: src/Woo/Gateway.php:250
+msgid "Connect with Bitsnap"
+msgstr "Połącz z Bitsnap"
+
+#. translators: 1: webhook URL, 2: opening link tag for the Register webhook button, 3: closing link tag.
+#: src/Woo/Gateway.php:252
+#, php-format
+msgid ""
+"Webhook URL: %1$s. Or enter an API key below and save it, then %2$sRegister "
+"webhook%3$s to create the webhook in Bitsnap and store its secret."
+msgstr ""
+"Adres webhooka: %1$s. Możesz też wpisać poniżej klucz API i go zapisać, a "
+"potem użyć przycisku %2$sZarejestruj webhook%3$s, aby utworzyć webhook w "
+"Bitsnap i zapisać jego sekret."
+
+#: src/Woo/Gateway.php:282
 msgid "Saved, but it cannot be read. Enter it again."
 msgstr "Zapisano, ale nie da się go odczytać. Wpisz go ponownie."
 
-#: src/Woo/Gateway.php:273
+#: src/Woo/Gateway.php:284
 msgid "Saved. Enter a new value to replace it."
 msgstr "Zapisano. Wpisz nową wartość, aby ją zastąpić."
 
 #. translators: %s: the prefix the value must start with.
-#: src/Woo/Gateway.php:320
+#: src/Woo/Gateway.php:331
 #, php-format
 msgid "The value was not saved: it must start with %s."
 msgstr "Wartość nie została zapisana: musi zaczynać się od %s."
 
-#: src/Woo/Gateway.php:350
+#: src/Woo/Gateway.php:361
 msgid "The order was not found. Please try again."
 msgstr "Nie znaleziono zamówienia. Spróbuj ponownie."
 
 #. translators: %s: reason the payment could not be started.
-#: src/Woo/Gateway.php:360
+#: src/Woo/Gateway.php:371
 #, php-format
 msgid "Bitsnap could not start the payment: %s"
 msgstr "Bitsnap nie mógł rozpocząć płatności: %s"
 
-#: src/Woo/Gateway.php:364
+#: src/Woo/Gateway.php:375
 msgid ""
 "We could not start the payment. Please try again or choose another payment "
 "method."
@@ -427,7 +502,7 @@ msgstr "Pozostałe produkty (%d)"
 #: src/Woo/OrderUpdater.php:104
 #, php-format
 msgid "Bitsnap invoice issued: %s"
-msgstr ""
+msgstr "Faktura wystawiona przez Bitsnap: %s"
 
 #. translators: %s: where the refund was made, for example "dashboard".
 #: src/Woo/OrderUpdater.php:182

@@ -7,6 +7,7 @@
 
 namespace Bitsnap\WooCommerce;
 
+use Bitsnap\WooCommerce\OAuth\SettingsTokenStore;
 use Bitsnap\WooCommerce\Support\Settings;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -16,16 +17,20 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Credential provider.
  *
- * Today there is one mode, `manual`: the merchant pastes an API key and a webhook secret for
- * each environment, and they are read from the gateway settings.
+ * Two modes, chosen for each environment on its own:
  *
- * The seam for "Connect with Bitsnap" (OAuth, phase 2): add a mode that reads a stored
- * `bsat_` token and its webhook secret and fills the same four values. Everything else in
- * the plugin asks this class and never reads the settings itself, so nothing else changes.
+ * - `oauth`: the merchant used "Connect with Bitsnap". The `bsat_` access token is the API credential.
+ * - `manual`: the merchant pasted an API key (`bs_test_`, `bs_live_`).
+ *
+ * OAuth takes precedence when both exist. Both modes use the same webhook secret field, which "Connect with
+ * Bitsnap" and "Register webhook" fill. Everything else in the plugin asks this class and never reads the
+ * settings itself.
  */
 final class Credentials {
 
 	public const MODE_MANUAL = 'manual';
+
+	public const MODE_OAUTH = 'oauth';
 
 	public const ENV_TEST = 'test';
 
@@ -53,12 +58,13 @@ final class Credentials {
 	}
 
 	/**
-	 * How credentials are supplied.
+	 * How credentials are supplied for an environment.
 	 *
+	 * @param string|null $environment 'test', 'live', or null for the current one.
 	 * @return string One of the `MODE_*` constants.
 	 */
-	public function mode(): string {
-		return self::MODE_MANUAL;
+	public function mode( ?string $environment = null ): string {
+		return '' !== $this->oauth_token( $this->env( $environment ) ) ? self::MODE_OAUTH : self::MODE_MANUAL;
 	}
 
 	/**
@@ -71,14 +77,16 @@ final class Credentials {
 	}
 
 	/**
-	 * API key or token for an environment.
+	 * API credential for an environment: the OAuth access token when the environment is connected, otherwise the
+	 * manual API key. The OAuth client keeps the token fresh; this returns what is stored.
 	 *
 	 * @param string|null $environment 'test', 'live', or null for the current one.
 	 * @return string '' when not set.
 	 */
 	public function api_key( ?string $environment = null ): string {
-		$env = $this->env( $environment );
-		return $this->settings->get_secret( 'oauth_' . $env . '_access' ) ?: $this->settings->get_secret( 'api_key_' . $env );
+		$env   = $this->env( $environment );
+		$token = $this->oauth_token( $env );
+		return '' !== $token ? $token : $this->settings->get_secret( 'api_key_' . $env );
 	}
 
 	/**
@@ -125,6 +133,16 @@ final class Credentials {
 	public function base_url(): string {
 		$url = trim( $this->settings->get( 'api_base_url' ) );
 		return rtrim( '' === $url ? self::DEFAULT_BASE_URL : $url, '/' );
+	}
+
+	/**
+	 * The stored OAuth access token of an environment.
+	 *
+	 * @param string $environment 'test' or 'live'.
+	 * @return string '' when the environment is not connected.
+	 */
+	private function oauth_token( string $environment ): string {
+		return $this->settings->get_secret( SettingsTokenStore::key( $environment, 'access' ) );
 	}
 
 	/**

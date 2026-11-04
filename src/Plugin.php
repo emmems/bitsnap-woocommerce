@@ -8,15 +8,21 @@
 namespace Bitsnap\WooCommerce;
 
 use Bitsnap\WooCommerce\Admin\Notices;
-use Bitsnap\WooCommerce\Admin\RegisterWebhook;
 use Bitsnap\WooCommerce\Admin\OAuthActions;
+use Bitsnap\WooCommerce\Admin\RegisterWebhook;
 use Bitsnap\WooCommerce\Api\Client;
 use Bitsnap\WooCommerce\Blocks\PaymentMethod;
+use Bitsnap\WooCommerce\OAuth\ApiTokens;
+use Bitsnap\WooCommerce\OAuth\Service as OAuthService;
+use Bitsnap\WooCommerce\OAuth\SettingsTokenStore;
+use Bitsnap\WooCommerce\OAuth\TransientStorage;
+use Bitsnap\WooCommerce\OAuth\WpTransport;
 use Bitsnap\WooCommerce\Support\Logger;
 use Bitsnap\WooCommerce\Support\Secrets;
 use Bitsnap\WooCommerce\Support\Settings;
-use Bitsnap\WooCommerce\OAuth\Service as OAuthService;
 use Bitsnap\WooCommerce\Webhook\Handler;
+use Bitsnap\WooCommerce\Webhook\Registrar;
+use Bitsnap\WooCommerce\Webhook\SettingsStore as WebhookStore;
 use Bitsnap\WooCommerce\Woo\Gateway;
 use Bitsnap\WooCommerce\Woo\OrderReader;
 use Bitsnap\WooCommerce\Woo\OrderSync;
@@ -140,46 +146,59 @@ final class Plugin {
 	}
 
 	/**
-	 * API client for an environment.
+	 * OAuth client ("Connect with Bitsnap").
+	 *
+	 * @return OAuthService
+	 */
+	public function oauth(): OAuthService {
+		return $this->service(
+			'oauth',
+			fn() => new OAuthService(
+				new WpTransport(),
+				new TransientStorage(),
+				new SettingsTokenStore( $this->settings() ),
+				$this->credentials()->base_url(),
+				OAuthActions::callback_url(),
+				'Bitsnap for WooCommerce – ' . wp_parse_url( home_url(), PHP_URL_HOST ),
+				defined( 'BITSNAP_WC_VERSION' ) ? BITSNAP_WC_VERSION : 'dev'
+			)
+		);
+	}
+
+	/**
+	 * Creates and deletes this site's webhook in Bitsnap.
+	 *
+	 * @return Registrar
+	 */
+	public function webhooks(): Registrar {
+		return $this->service(
+			'webhooks',
+			fn() => new Registrar(
+				new WebhookStore( $this->settings() ),
+				Gateway::webhook_url(),
+				'WooCommerce: ' . wp_parse_url( home_url(), PHP_URL_HOST ),
+				RegisterWebhook::EVENTS
+			)
+		);
+	}
+
+	/**
+	 * API client for an environment. A connected environment uses its OAuth tokens, which refresh as needed;
+	 * otherwise the client uses the manual API key.
 	 *
 	 * @param string|null $environment 'test', 'live', or null for the current one.
 	 * @return Client
 	 */
 	public function client( ?string $environment = null ): Client {
 		$credentials = $this->credentials();
-		$env         = $environment ?: $credentials->environment();
-		$oauth       = new OAuthService( $this->settings() );
+		$env         = $environment ? $environment : $credentials->environment();
+		$oauth       = $this->oauth();
 		return new Client(
 			$credentials->base_url(),
 			$credentials->api_key( $env ),
 			$this->logger(),
 			20,
-			$oauth->connected( $env ) ? function () use ( $oauth, $env, $credentials ) {
-				$lock = 'bitsnap_oauth_refresh_' . $env;
-				if ( get_transient( $lock ) ) {
-					return $oauth->token( $env ); }
-				set_transient( $lock, 1, 15 );
-				try {
-					$refresh   = $oauth->refresh_token( $env );
-					$client_id = $oauth->client_id( $env, $credentials->base_url() );
-					$data      = $oauth->token_request(
-						$credentials->base_url(),
-						array(
-							'grant_type'    => 'refresh_token',
-							'refresh_token' => $refresh,
-							'client_id'     => $client_id,
-							'resource'      => rtrim( $credentials->base_url(), '/' ) . '/api/v1',
-						),
-						$env
-					);
-					$oauth->save( $data );
-					return $data['access_token'];
-				} finally {
-					delete_transient( $lock ); }
-			} : null,
-			function () use ( $oauth, $env ) {
-				return \Bitsnap\WooCommerce\OAuth\Protocol::should_refresh( $oauth->expires_at( $env ), time() );
-			}
+			$oauth->connected( $env ) ? new ApiTokens( $oauth, $env ) : null
 		);
 	}
 

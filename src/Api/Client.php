@@ -7,6 +7,7 @@
 
 namespace Bitsnap\WooCommerce\Api;
 
+use Bitsnap\WooCommerce\OAuth\Protocol;
 use Bitsnap\WooCommerce\Support\Logger;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -53,31 +54,37 @@ class Client {
 	 * @var int
 	 */
 	private $timeout;
-	private $refresh;
-	private $needs_refresh;
+
+	/**
+	 * Source of OAuth access tokens, null when an API key is used.
+	 *
+	 * @var TokenSource|null
+	 */
+	private $oauth;
 
 	/**
 	 * Constructor.
 	 *
-	 * @param string $base_url Base URL such as https://bitsnap.pl.
-	 * @param string $token    API key or token.
-	 * @param Logger $logger   Logger.
-	 * @param int    $timeout  Timeout in seconds.
+	 * @param string           $base_url Base URL such as https://bitsnap.pl.
+	 * @param string           $token    API key or token.
+	 * @param Logger           $logger   Logger.
+	 * @param int              $timeout  Timeout in seconds.
+	 * @param TokenSource|null $oauth Gives and refreshes OAuth access tokens. When set, it replaces `$token`.
 	 */
-	public function __construct( string $base_url, string $token, Logger $logger, int $timeout = 20, ?callable $refresh = null, ?callable $needs_refresh = null ) {
-		$this->base_url      = rtrim( $base_url, '/' );
-		$this->token         = $token;
-		$this->logger        = $logger;
-		$this->timeout       = $timeout;
-		$this->refresh       = $refresh;
-		$this->needs_refresh = $needs_refresh;
+	public function __construct( string $base_url, string $token, Logger $logger, int $timeout = 20, ?TokenSource $oauth = null ) {
+		$this->base_url = rtrim( $base_url, '/' );
+		$this->token    = $token;
+		$this->logger   = $logger;
+		$this->timeout  = $timeout;
+		$this->oauth    = $oauth;
 	}
 
 	/**
 	 * Calls a method.
 	 *
 	 * A call with an idempotency key is repeated once after a transport failure or a 5xx
-	 * answer. The key makes that safe.
+	 * answer. The key makes that safe. With OAuth, a 401 answer refreshes the token and repeats the
+	 * call once, whether it has a key or not, because a rejected request changed nothing.
 	 *
 	 * @param string              $service         Service name, for example `CheckoutService`.
 	 * @param string              $method          Method name, for example `CreateCheckoutSession`.
@@ -87,25 +94,27 @@ class Client {
 	 * @throws ApiException When the call fails.
 	 */
 	public function call( string $service, string $method, array $body, ?string $idempotency_key = null ): array {
-		if ( $this->refresh && $this->needs_refresh && call_user_func( $this->needs_refresh ) ) {
-			$this->token = call_user_func( $this->refresh ); }
-		$attempts = ( null === $idempotency_key && ! $this->refresh ) ? 1 : 2;
-		$error    = null;
-		for ( $i = 1; $i <= $attempts; $i++ ) {
+		if ( $this->oauth ) {
+			$this->token = $this->oauth->current();
+		}
+		$attempts  = ( null === $idempotency_key || '' === $idempotency_key ) ? 1 : 2;
+		$refreshed = false;
+		while ( true ) {
 			try {
 				return $this->send( $service, $method, $body, $idempotency_key );
 			} catch ( ApiException $e ) {
-				if ( 401 === $e->get_http_status() && $this->refresh && 1 === $i ) {
-					$this->token = call_user_func( $this->refresh );
-					continue; }
-				$error = $e;
-				if ( ! $e->is_retryable() ) {
-					break;
+				if ( $this->oauth && Protocol::should_refresh_after_response( $e->get_http_status(), $refreshed ) ) {
+					$this->token = $this->oauth->refresh( $this->token );
+					$refreshed   = true;
+					continue;
 				}
-				$this->logger->debug( 'Retryable error, attempt ' . $i . ' of ' . $attempts, array( 'error' => $e->getMessage() ) );
+				--$attempts;
+				if ( $attempts < 1 || ! $e->is_retryable() ) {
+					throw $e;
+				}
+				$this->logger->debug( 'Retryable error, trying once more', array( 'error' => $e->getMessage() ) );
 			}
 		}
-		throw $error; // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Not output.
 	}
 
 	/**

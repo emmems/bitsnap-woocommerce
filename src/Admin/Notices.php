@@ -48,7 +48,7 @@ final class Notices {
 	/**
 	 * Stores a message for the current user, shown on the next admin page load.
 	 *
-	 * @param string $type    'success' or 'error'.
+	 * @param string $type    'success', 'warning' or 'error'.
 	 * @param string $message Plain text.
 	 * @return void
 	 */
@@ -78,7 +78,7 @@ final class Notices {
 			delete_transient( self::transient_key() );
 			printf(
 				'<div class="notice notice-%1$s is-dismissible"><p>%2$s</p></div>',
-				esc_attr( 'success' === $flash['type'] ? 'success' : 'error' ),
+				esc_attr( in_array( $flash['type'], array( 'success', 'warning' ), true ) ? $flash['type'] : 'error' ),
 				esc_html( (string) $flash['message'] )
 			);
 		}

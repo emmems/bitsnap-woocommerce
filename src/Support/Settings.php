@@ -120,6 +120,43 @@ final class Settings {
 	}
 
 	/**
+	 * Changes several settings in one write.
+	 *
+	 * One `update_option` means a reader never sees half of a change, which matters for a rotated token pair.
+	 *
+	 * @param array<string,string> $values  Plain settings to set.
+	 * @param array<string,string> $secrets Secret settings to set, as plain text. They are encrypted here. An empty value is skipped.
+	 * @param string[]             $remove  Keys to remove.
+	 * @return void
+	 */
+	public function update( array $values, array $secrets = array(), array $remove = array() ): void {
+		$all = $this->all();
+		foreach ( $values as $key => $value ) {
+			$all[ $key ] = $value;
+		}
+		foreach ( $secrets as $key => $plain ) {
+			if ( '' !== $plain ) {
+				$all[ $key ] = $this->secrets->encrypt( $plain );
+			}
+		}
+		foreach ( $remove as $key ) {
+			unset( $all[ $key ] );
+		}
+		update_option( self::OPTION, $all );
+	}
+
+	/**
+	 * Drops the cached copy of the option, so the next read comes from the database. Another request may have
+	 * changed the option after this request loaded it.
+	 *
+	 * @return void
+	 */
+	public function reload(): void {
+		wp_cache_delete( 'alloptions', 'options' );
+		wp_cache_delete( self::OPTION, 'options' );
+	}
+
+	/**
 	 * Encrypts a value for storage, for the settings form.
 	 *
 	 * @param string $plain Plain text.

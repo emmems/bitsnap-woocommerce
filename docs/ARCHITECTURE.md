@@ -25,10 +25,12 @@ The Bitsnap order is a payment record. It carries `source = woocommerce`, so Bit
 | `bitsnap-for-woocommerce.php` | Header, constants, HPOS and Blocks declarations, bootstrap |
 | `src/Autoloader.php` | PSR-4 loader. The plugin has **no Composer runtime dependencies** |
 | `src/Plugin.php` | Hooks and a small service container |
-| `src/Credentials.php`, `src/OAuth/` | Credential provider and OAuth registration, PKCE and token lifecycle |
+| `src/Credentials.php` | The one class that knows where API credentials come from: OAuth token first, then the manual key |
+| `src/OAuth/` | "Connect with Bitsnap". `Service` (registration, PKCE, state, refresh, revoke) and `Protocol` are **pure**. `Storage`, `TokenStore` and `Transport` are the seams; `TransientStorage`, `SettingsTokenStore` and `WpTransport` are the WordPress side. `ApiTokens` gives `Api\Client` its token |
+| `src/Webhook/Registrar.php` | Creates and deletes the plugin's webhook in Bitsnap, and remembers its id (`Store`, `SettingsStore`) |
 | `src/Woo/` | Code that needs WooCommerce: `Gateway`, `OrderReader`, `OrderUpdater`, `PaymentStarter`, `OrderSync`, `ReturnPage`, `Reconciler`, `Refunder` |
-| `src/Mapping/`, `src/Webhook/{Signature,Event,EventPlanner}`, `src/Support/{Money,Redactor,Secrets,IdempotencyKey}`, `src/Api/ErrorMapper` | **Pure** classes with no WordPress calls, covered by unit tests |
-| `src/Api/Client.php` | Thin `wp_remote_post` wrapper for Connect JSON |
+| `src/Mapping/`, `src/Webhook/{Signature,Event,EventPlanner,Registrar}`, `src/OAuth/{Protocol,Service}`, `src/Support/{Money,Redactor,Secrets,IdempotencyKey}`, `src/Api/ErrorMapper` | **Pure** classes with no WordPress calls, covered by unit tests |
+| `src/Api/Client.php` | Thin `wp_remote_post` wrapper for Connect JSON. With OAuth it asks its `TokenSource` for the token and repeats a call once after a 401 |
 | `src/Webhook/Handler.php` | The `wc-api=bitsnap` endpoint |
 | `src/Blocks/PaymentMethod.php`, `assets/js/blocks/index.js` | Cart and Checkout Blocks integration |
 
@@ -40,7 +42,45 @@ This is what the plugin relies on. The source of truth is section 9 of the check
 
 ### Credentials
 
-OAuth `bsat_` access and refresh tokens take precedence per environment; otherwise the plugin uses manual API keys and webhook secrets. OAuth secrets use `Support\Secrets` encryption. Access tokens refresh within 60 seconds of expiry and after a 401, with a short transient lock.
+Each environment (test, live) has its own credentials, and they are independent. An environment is in one of two modes:
+
+- **OAuth** (`Connect with Bitsnap`): a `bsat_` access token and a rotating refresh token.
+- **Manual**: an API key (`bs_test_…`, `bs_live_…`) pasted by the merchant.
+
+OAuth takes precedence over a manual key, per environment. Both modes use the same webhook secret field (`webhook_secret_<env>`) and the same `Api\Client`. `Credentials` is the only place that decides which credential is in use.
+
+### Connect with Bitsnap (OAuth, section 9.6 of the plan)
+
+The flow, all through `OAuth\Service`, which does not call WordPress:
+
+1. **Register.** `POST {base}/oauth/register` (RFC 7591), once per site, base URL and callback. The client id is stored in `oauth_client_id` with a fingerprint of the base URL and the callback, so a new base URL or site address registers again. Both must be `https`, except `http://localhost` and `http://127.0.0.1` for development. Otherwise the connection is refused with a clear message.
+2. **Authorize.** `OAuthActions::connect()` (nonce and `manage_woocommerce`) sends the merchant to `{base}/oauth/authorize` with PKCE S256 (`scope=woocommerce offline_access`, `resource={base}/api/v1`, `environment=test|live`). The state is 32 random bytes, kept in a transient under its hash for 10 minutes together with the user id, the environment and the code verifier. The verifier never leaves the site.
+3. **Callback.** `admin-post.php?action=bitsnap_oauth_callback` needs `manage_woocommerce`. The state is the CSRF protection (a WordPress nonce cannot ride on a redirect from another site). It is read and deleted first, so it works **once**, then checked against the user and the clock. Only after that is an `error` parameter looked at, and its text is never shown. Input is sanitized and length-limited; the redirect goes to the settings page.
+4. **Token.** `POST {base}/oauth/token` (form) with the code, verifier, redirect URI, client id and `resource`. The answer must carry `bitsnap_project_id`, `bitsnap_project_name` and `bitsnap_environment`. **Tokens are stored for `bitsnap_environment`**, the environment the server issued them for, even if the merchant changed it on the consent page.
+5. **Webhook.** Right after connecting, `Webhook\Registrar::register(..., replace: true)` deletes this site's earlier webhook of that environment by id and creates a new one, so the stored secret always matches the webhook that exists. A failure here leaves the connection in place and shows a warning.
+
+Tokens are stored encrypted (`Support\Secrets`, libsodium) in the gateway option, like manual keys. The project id and name, expiry and client id are plain. A token pair is written with a single `update_option`, so a rotated pair is never half saved.
+
+**Refreshing.** `Api\Client` asks its `TokenSource` (`OAuth\ApiTokens`) for a token before each call. The token is refreshed when it expires within 60 seconds. When the API answers 401, the client refreshes and repeats the call **once**, with or without an idempotency key, because a rejected request changed nothing. Only a call with an idempotency key is repeated after a network error or 5xx.
+
+Rotating refresh tokens make parallel refreshes dangerous: the second request would use a token that is already spent. `Service::refresh()` therefore takes a transient lock (`bitsnap_oauth_refresh_<env>`, 30 s). The request that gets the lock re-reads the tokens **from the database** (`Settings::reload()` drops this request's cached copy) and refreshes only if they are still the stale ones. A request that loses the lock waits up to five seconds, re-reads the stored tokens, and uses the winner's. It never uses the refresh token itself. If the lock never clears the call fails with `busy` and the refresh token stays unused.
+
+Failures:
+
+| Answer of the token endpoint | What the plugin does |
+| --- | --- |
+| `invalid_client` with status **400 or 401** (RFC 6749, RFC 7591), read from the JSON `error` field, not the status alone | Forget the client, register again, retry once |
+| `invalid_grant` (revoked, or the refresh token was already used) | Clear the OAuth tokens of **that environment**, so it falls back to its manual key and the settings page offers "Connect with Bitsnap" again. API calls fail with a clear "connect again" message |
+| Network error, 5xx | Keep the tokens, report "could not be reached" |
+| A 401 without a JSON `invalid_client` | Not a lost registration. No re-registration |
+
+**Disconnect.** `OAuthActions::disconnect()` deletes the webhook (needs the token, so it goes first), posts `{base}/oauth/revoke` with the refresh token and client id, then clears the tokens, the webhook id and the webhook secret of that environment only. If Bitsnap does not confirm the deletion or the revocation, the store is disconnected anyway and the merchant gets a warning that points to "Connected apps" in Bitsnap.
+
+Nothing in the OAuth code logs. Errors carry a short code (`OAuthException::error_name()`), never a response body, and `Admin\OAuthMessages` turns it into text.
+
+### Webhook registration
+
+`WebhooksService.CreateWebhook` answers `{ webhook: { id, url, … }, signingSecret }`. `Webhook\Registrar` stores `webhook.id` as `webhook_id_<env>` and the secret as `webhook_secret_<env>`, for the OAuth connection and for the manual "Register webhook" button alike. `DeleteWebhook` takes `{ "id": "<webhook id>" }`, not the URL. Without a stored id (a site that registered before ids were stored) the registrar calls `ListWebhooks`, matches the URL, and deletes by that id. If the list needs a permission the key lacks, nothing is deleted and a secret the merchant pasted stays. A webhook that is already gone (404) counts as deleted.
 
 ### `CheckoutService.CreateCheckoutSession`
 
@@ -115,9 +155,9 @@ Response codes:
 | `405` | Not a `POST` |
 | `500 error` | Unexpected failure while applying. Bitsnap should retry |
 
-### Credentials provider (seam for OAuth)
+### Credentials provider
 
-`Credentials` is the only class that knows where API credentials come from. OAuth fills the same API-token and webhook-secret fields as manual mode. OAuth connection records are scoped to environment and the active API base URL. Client registrations are cached per site, base URL and environment.
+`Credentials` is the only class that knows where API credentials come from. `mode( $environment )` is `oauth` when an access token is stored for the environment and `manual` otherwise. `api_key()` returns the OAuth access token when there is one (the client refreshes it as needed), else the manual key. The webhook secret is the same field in both modes.
 
 ## Order meta
 
@@ -136,5 +176,7 @@ All keys are read and written through `WC_Order` meta methods, so the plugin wor
 ## Known limits
 
 - Two concurrent deliveries of the same event are not locked against each other. Every action checks the order state first, so the outcome is the same, but a refund event delivered twice at the same instant could in theory record the refund twice.
+- Without a persistent object cache the refresh lock is a transient in the options table, so two requests can in theory both take it. The request that wins the lock re-reads the tokens from the database before it refreshes, which closes the common case, but a rotated token spent twice would end in `invalid_grant` and a reconnect.
+- If Bitsnap forgets the client registration, the merchant sees an error on the Bitsnap consent page, where the plugin cannot catch it. Re-registration happens when the token endpoint reports `invalid_client`. A fix by hand: change the API base URL and back, or disconnect and connect.
 - Only two-decimal currencies are supported.
 - `process_refund()` finds the WooCommerce refund it is processing as the newest refund of the order. WooCommerce creates that record before it calls the gateway, and does not pass its id.

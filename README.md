@@ -4,7 +4,7 @@ Accept BLIK, cards, bank transfers and more in WooCommerce through [Bitsnap](htt
 
 - Works with the **Cart and Checkout Blocks** and with the classic (shortcode) checkout.
 - Compatible with **High-Performance Order Storage** (HPOS).
-- Separate **test** and **live** credentials.
+- **Connect with Bitsnap** (OAuth with PKCE), or a manual API key. Separate **test** and **live** connections.
 - **Refunds** from the WooCommerce order screen, for gateways that can refund through Bitsnap.
 - Reads the **NIP** from the invoice plugin you already use. It adds no checkout field.
 - Polish and English.
@@ -14,10 +14,11 @@ Requires WordPress 6.5+, PHP 7.4+ and WooCommerce 9.0+. Licence: GPLv2 or later.
 ## Install
 
 1. Install the plugin from the WordPress.org plugin directory, or upload the release zip from [GitHub Releases](https://github.com/emmems/bitsnap-woocommerce/releases).
-2. In Bitsnap, create an API key (test first). It needs the permissions `checkout:create`, `orders:read` and `refunds:write`, and `customers:pii` to send buyer details.
-3. In WooCommerce, open **Settings > Payments > Bitsnap**. Paste the test API key and save.
-4. Click **Register webhook**. This needs a key with `webhooks:write`. Without it, create a webhook in Bitsnap for the URL shown on the settings page, and paste its `whsec_` secret.
-5. Place a test order. When it works, repeat with the live key and turn **Test mode** off.
+2. In WooCommerce, open **Settings > Payments > Bitsnap** and click **Connect with Bitsnap** under *Test credentials*. Sign in to Bitsnap, choose a project and approve. The plugin registers the webhook and stores its secret. This needs an https address for your shop (`localhost` works for development).
+3. Or set it up by hand: in Bitsnap, create an API key (test first) with the permissions `checkout:create`, `orders:read` and `refunds:write`, and `customers:pii` to send buyer details. Paste it under *Test credentials*, save, and click **Register webhook** (needs `webhooks:write`). Without that permission, create a webhook in Bitsnap for the URL shown on the settings page and paste its `whsec_` secret.
+4. Place a test order. When it works, connect the live environment the same way and turn **Test mode** off.
+
+If an environment has both a connection and an API key, the connection is used. **Disconnect** deletes the webhook, revokes the access and clears that environment only.
 
 ## How it works
 

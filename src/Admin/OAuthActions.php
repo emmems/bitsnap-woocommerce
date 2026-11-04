@@ -1,133 +1,218 @@
 <?php
-/** OAuth admin-post handlers. */
+/**
+ * "Connect with Bitsnap" admin actions.
+ *
+ * @package Bitsnap\WooCommerce
+ */
+
 namespace Bitsnap\WooCommerce\Admin;
 
-use Bitsnap\WooCommerce\OAuth\Protocol;
-use Bitsnap\WooCommerce\OAuth\Service;
+use Bitsnap\WooCommerce\Api\ApiException;
+use Bitsnap\WooCommerce\OAuth\OAuthException;
 use Bitsnap\WooCommerce\Plugin;
-use Bitsnap\WooCommerce\Woo\Gateway;
+use Bitsnap\WooCommerce\Webhook\Registrar;
+use Bitsnap\WooCommerce\Woo\ErrorMessages;
 
-/** Handles merchant connect callback and disconnect operations. */
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+/**
+ * The three `admin-post.php` actions of the OAuth connection: start, callback and disconnect.
+ */
 final class OAuthActions {
+
+	/**
+	 * Plugin container.
+	 *
+	 * @var Plugin
+	 */
 	private $plugin;
+
+	/**
+	 * Constructor.
+	 *
+	 * @param Plugin $plugin Plugin container.
+	 */
 	public function __construct( Plugin $plugin ) {
-		$this->plugin = $plugin; }
+		$this->plugin = $plugin;
+	}
+
+	/**
+	 * Callback URL registered with Bitsnap.
+	 *
+	 * @return string
+	 */
+	public static function callback_url(): string {
+		return admin_url( 'admin-post.php?action=bitsnap_oauth_callback' );
+	}
+
+	/**
+	 * Registers the `admin-post.php` actions.
+	 *
+	 * @return void
+	 */
 	public function register(): void {
 		add_action( 'admin_post_bitsnap_oauth_connect', array( $this, 'connect' ) );
 		add_action( 'admin_post_bitsnap_oauth_callback', array( $this, 'callback' ) );
-		add_action( 'admin_post_bitsnap_oauth_disconnect', array( $this, 'disconnect' ) ); }
-	private function service(): Service {
-		return new Service( $this->plugin->settings() ); }
-	private function back(): string {
-		return admin_url( 'admin.php?page=wc-settings&tab=checkout&section=bitsnap' ); }
-	public function connect(): void {
-		$env = isset( $_GET['env'] ) ? sanitize_key( wp_unslash( $_GET['env'] ) ) : '';
-		check_admin_referer( 'bitsnap_oauth_connect_' . $env );
-		if ( ! current_user_can( 'manage_woocommerce' ) || ! in_array( $env, array( 'test', 'live' ), true ) ) {
-			wp_die( esc_html__( 'You are not allowed to do this.', 'bitsnap-for-woocommerce' ), '', array( 'response' => 403 ) ); }
-		try {
-			$base      = $this->plugin->credentials()->base_url();
-			$client    = $this->service()->client_id( $env, $base );
-			$verifier  = Protocol::verifier();
-			$state     = wp_generate_password( 40, false );
-			$transient = 'bitsnap_oauth_state_' . hash( 'sha256', $state );
-			set_transient(
-				$transient,
-				array(
-					'state'    => $state,
-					'user'     => get_current_user_id(),
-					'expires'  => time() + 600,
-					'verifier' => $verifier,
-					'env'      => $env,
-				),
-				10 * MINUTE_IN_SECONDS
-			);
-			wp_safe_redirect( Protocol::authorize_url( $base, $client, admin_url( 'admin-post.php?action=bitsnap_oauth_callback' ), $state, Protocol::challenge( $verifier ), $env ), array( 'https' ) );
-			exit;
-		} catch ( \Throwable $e ) {
-			Notices::flash( 'error', $e->getMessage() );
-			wp_safe_redirect( $this->back() );
-			exit; }
+		add_action( 'admin_post_bitsnap_oauth_disconnect', array( $this, 'disconnect' ) );
 	}
-	public function callback(): void {
-		if ( ! current_user_can( 'manage_woocommerce' ) ) {
-			wp_die( esc_html__( 'You are not allowed to do this.', 'bitsnap-for-woocommerce' ), '', array( 'response' => 403 ) ); }
-		$state  = isset( $_GET['state'] ) ? sanitize_text_field( wp_unslash( $_GET['state'] ) ) : '';
-		$key    = 'bitsnap_oauth_state_' . hash( 'sha256', $state );
-		$record = get_transient( $key );
-		delete_transient( $key );
-		if ( ! is_array( $record ) || ! Protocol::valid_state( $record, $state, get_current_user_id(), time() ) ) {
-			Notices::flash( 'error', __( 'The Bitsnap connection expired or could not be verified. Please connect again.', 'bitsnap-for-woocommerce' ) );
-			wp_safe_redirect( $this->back() );
-			exit; }
-		if ( isset( $_GET['error'] ) ) {
-			Notices::flash( 'error', sanitize_text_field( wp_unslash( $_GET['error_description'] ?? $_GET['error'] ) ) );
-			wp_safe_redirect( $this->back() );
-			exit; }
+
+	/**
+	 * Starts a connection: sends the merchant to the Bitsnap consent page.
+	 *
+	 * @return void
+	 */
+	public function connect(): void {
+		$environment = $this->environment_from_request();
+		check_admin_referer( 'bitsnap_oauth_connect_' . $environment );
+		$this->require_capability();
+
 		try {
-			$env    = $record['env'];
-			$base   = $this->plugin->credentials()->base_url();
-			$client = $this->service()->client_id( $env, $base );
-			$tokens = $this->service()->token_request(
-				$base,
-				array(
-					'grant_type'    => 'authorization_code',
-					'code'          => sanitize_text_field( wp_unslash( $_GET['code'] ?? '' ) ),
-					'redirect_uri'  => admin_url( 'admin-post.php?action=bitsnap_oauth_callback' ),
-					'client_id'     => $client,
-					'code_verifier' => $record['verifier'],
-					'resource'      => rtrim( $base, '/' ) . '/api/v1',
-				),
-				$env
-			);
-			$this->service()->save( $tokens );
-			$client_api = $this->plugin->client( $env );
-			$hook       = $client_api->call(
-				'WebhooksService',
-				'CreateWebhook',
-				array(
-					'name'   => 'WooCommerce: ' . wp_parse_url( home_url(), PHP_URL_HOST ),
-					'url'    => Gateway::webhook_url(),
-					'events' => RegisterWebhook::EVENTS,
-				),
-				'woo-webhook-' . wp_generate_uuid4()
-			);
-			if ( ! empty( $hook['signingSecret'] ) ) {
-				$this->plugin->settings()->set_secret( 'webhook_secret_' . $env, $hook['signingSecret'] );
-			} Notices::flash( 'success', __( 'Connected with Bitsnap and registered the webhook.', 'bitsnap-for-woocommerce' ) );
-		} catch ( \Throwable $e ) {
-			Notices::flash( 'error', $e->getMessage() ); }
-		wp_safe_redirect( $this->back() );
+			$url = $this->plugin->oauth()->begin( $environment, get_current_user_id() );
+		} catch ( OAuthException $e ) {
+			Notices::flash( 'error', OAuthMessages::describe( $e ) );
+			$this->back();
+			return;
+		}
+
+		// The consent page is on the Bitsnap host, which `wp_safe_redirect` would otherwise replace by the dashboard.
+		$host = (string) wp_parse_url( $url, PHP_URL_HOST );
+		add_filter(
+			'allowed_redirect_hosts',
+			static function ( $hosts ) use ( $host ) {
+				$hosts[] = $host;
+				return $hosts;
+			}
+		);
+		wp_safe_redirect( $url );
 		exit;
 	}
-	public function disconnect(): void {
-		$env = isset( $_GET['env'] ) ? sanitize_key( wp_unslash( $_GET['env'] ) ) : '';
-		check_admin_referer( 'bitsnap_oauth_disconnect_' . $env );
-		if ( ! current_user_can( 'manage_woocommerce' ) || ! in_array( $env, array( 'test', 'live' ), true ) ) {
-			wp_die( esc_html__( 'You are not allowed to do this.', 'bitsnap-for-woocommerce' ), '', array( 'response' => 403 ) ); }
-		$service = $this->service();
-		$base    = $this->plugin->credentials()->base_url();
+
+	/**
+	 * Finishes a connection: Bitsnap sends the merchant back here with a code.
+	 *
+	 * @return void
+	 */
+	public function callback(): void {
+		$this->require_capability();
+
+		// The OAuth state is the protection against forged requests here: random, single use, bound to this user and
+		// valid for ten minutes. A WordPress nonce cannot be added to a redirect that comes from another site.
+		$state = self::query_arg( 'state' );
+		$code  = self::query_arg( 'code' );
+		$error = self::query_arg( 'error' );
+
 		try {
-			$this->plugin->client( $env )->call( 'WebhooksService', 'DeleteWebhook', array( 'url' => Gateway::webhook_url() ) );
-		} catch ( \Throwable $e ) {
-			/* Deletion is best effort; revoke the grant regardless. */ } $client = $service->client_id( $env, $base );
-		wp_remote_post(
-			rtrim( $base, '/' ) . '/oauth/revoke',
-			array(
-				'timeout' => 15,
-				'headers' => array( 'Content-Type' => 'application/x-www-form-urlencoded' ),
-				'body'    => array(
-					'token'     => $service->refresh_token( $env ),
-					'client_id' => $client,
-				),
+			$tokens = $this->plugin->oauth()->complete( $state, $code, get_current_user_id(), $error );
+		} catch ( OAuthException $e ) {
+			Notices::flash( 'error', OAuthMessages::describe( $e ) );
+			$this->back();
+			return;
+		}
+
+		$environment = (string) $tokens['environment'];
+		$project     = (string) $tokens['project_name'];
+		try {
+			$this->plugin->webhooks()->register( $environment, $this->plugin->client( $environment ), true );
+		} catch ( ApiException $e ) {
+			Notices::flash(
+				'warning',
+				sprintf(
+					/* translators: 1: Bitsnap project name, 2: environment (test or live), 3: reason. */
+					__( 'Connected to %1$s (%2$s), but the webhook could not be registered: %3$s Use "Register webhook" below, or create the webhook in Bitsnap.', 'bitsnap-for-woocommerce' ),
+					$project,
+					$environment,
+					'missing_signing_secret' === $e->get_reason() ? __( 'Bitsnap did not return its secret.', 'bitsnap-for-woocommerce' ) : ErrorMessages::describe( $e )
+				)
+			);
+			$this->back();
+			return;
+		}
+
+		Notices::flash(
+			'success',
+			sprintf(
+				/* translators: 1: Bitsnap project name, 2: environment (test or live). */
+				__( 'Connected to %1$s (%2$s). The webhook is registered and its secret is saved.', 'bitsnap-for-woocommerce' ),
+				$project,
+				$environment
 			)
 		);
-		$service->clear( $env );
-		$all = $this->plugin->settings()->all();
-		unset( $all[ 'webhook_secret_' . $env ] );
-		update_option( \Bitsnap\WooCommerce\Support\Settings::OPTION, $all );
-		Notices::flash( 'success', __( 'Disconnected from Bitsnap.', 'bitsnap-for-woocommerce' ) );
-		wp_safe_redirect( $this->back() );
+		$this->back();
+	}
+
+	/**
+	 * Ends a connection of one environment: deletes the webhook, revokes the grant, forgets the tokens.
+	 *
+	 * @return void
+	 */
+	public function disconnect(): void {
+		$environment = $this->environment_from_request();
+		check_admin_referer( 'bitsnap_oauth_disconnect_' . $environment );
+		$this->require_capability();
+
+		// The webhook goes first, because deleting it needs the token that the revocation ends.
+		try {
+			$webhook = $this->plugin->webhooks()->remove( $environment, $this->plugin->client( $environment ) );
+		} catch ( \Throwable $e ) {
+			$webhook = Registrar::FAILED;
+		}
+		$revoked = $this->plugin->oauth()->disconnect( $environment );
+
+		if ( Registrar::FAILED === $webhook || ! $revoked ) {
+			Notices::flash( 'warning', __( 'Disconnected this store from Bitsnap, but Bitsnap did not confirm that the webhook was deleted and access revoked. Check "Connected apps" in your Bitsnap settings.', 'bitsnap-for-woocommerce' ) );
+		} else {
+			Notices::flash( 'success', __( 'Disconnected from Bitsnap.', 'bitsnap-for-woocommerce' ) );
+		}
+		$this->back();
+	}
+
+	/**
+	 * The environment of the request, which must be 'test' or 'live'.
+	 *
+	 * @return string
+	 */
+	private function environment_from_request(): string {
+		$environment = isset( $_GET['env'] ) ? sanitize_key( wp_unslash( $_GET['env'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Checked by check_admin_referer() right after, with the environment in the action name.
+		if ( ! in_array( $environment, array( 'test', 'live' ), true ) ) {
+			wp_die( esc_html__( 'Invalid request.', 'bitsnap-for-woocommerce' ), '', array( 'response' => 400 ) );
+		}
+		return $environment;
+	}
+
+	/**
+	 * Stops the request unless the user may manage WooCommerce.
+	 *
+	 * @return void
+	 */
+	private function require_capability(): void {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			wp_die( esc_html__( 'You are not allowed to do this.', 'bitsnap-for-woocommerce' ), '', array( 'response' => 403 ) );
+		}
+	}
+
+	/**
+	 * Reads one query argument of the callback, sanitized and limited in length.
+	 *
+	 * @param string $name Argument name.
+	 * @return string '' when it is missing.
+	 */
+	private static function query_arg( string $name ): string {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- See callback(): the OAuth state protects this request.
+		if ( ! isset( $_GET[ $name ] ) || ! is_string( $_GET[ $name ] ) ) {
+			return '';
+		}
+		return substr( sanitize_text_field( wp_unslash( $_GET[ $name ] ) ), 0, 2048 ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	}
+
+	/**
+	 * Returns to the gateway settings page.
+	 *
+	 * @return void
+	 */
+	private function back(): void {
+		wp_safe_redirect( admin_url( 'admin.php?page=wc-settings&tab=checkout&section=bitsnap' ) );
 		exit;
 	}
 }
