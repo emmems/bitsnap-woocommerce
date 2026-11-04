@@ -77,7 +77,8 @@ final class Credentials {
 	 * @return string '' when not set.
 	 */
 	public function api_key( ?string $environment = null ): string {
-		return $this->settings->get_secret( 'api_key_' . $this->env( $environment ) );
+		$env = $this->env( $environment );
+		return $this->settings->get_secret( 'oauth_' . $env . '_access' ) ?: $this->settings->get_secret( 'api_key_' . $env );
 	}
 
 	/**

@@ -25,7 +25,7 @@ final class Settings {
 	/**
 	 * Keys that hold secrets.
 	 */
-	public const SECRET_KEYS = array( 'api_key_test', 'api_key_live', 'webhook_secret_test', 'webhook_secret_live' );
+	public const SECRET_KEYS = array( 'api_key_test', 'api_key_live', 'webhook_secret_test', 'webhook_secret_live', 'oauth_test_access', 'oauth_test_refresh', 'oauth_live_access', 'oauth_live_refresh' );
 
 	/**
 	 * Encryption helper.

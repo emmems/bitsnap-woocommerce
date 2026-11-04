@@ -53,6 +53,8 @@ class Client {
 	 * @var int
 	 */
 	private $timeout;
+	private $refresh;
+	private $needs_refresh;
 
 	/**
 	 * Constructor.
@@ -62,11 +64,13 @@ class Client {
 	 * @param Logger $logger   Logger.
 	 * @param int    $timeout  Timeout in seconds.
 	 */
-	public function __construct( string $base_url, string $token, Logger $logger, int $timeout = 20 ) {
-		$this->base_url = rtrim( $base_url, '/' );
-		$this->token    = $token;
-		$this->logger   = $logger;
-		$this->timeout  = $timeout;
+	public function __construct( string $base_url, string $token, Logger $logger, int $timeout = 20, ?callable $refresh = null, ?callable $needs_refresh = null ) {
+		$this->base_url      = rtrim( $base_url, '/' );
+		$this->token         = $token;
+		$this->logger        = $logger;
+		$this->timeout       = $timeout;
+		$this->refresh       = $refresh;
+		$this->needs_refresh = $needs_refresh;
 	}
 
 	/**
@@ -83,12 +87,17 @@ class Client {
 	 * @throws ApiException When the call fails.
 	 */
 	public function call( string $service, string $method, array $body, ?string $idempotency_key = null ): array {
-		$attempts = null === $idempotency_key ? 1 : 2;
+		if ( $this->refresh && $this->needs_refresh && call_user_func( $this->needs_refresh ) ) {
+			$this->token = call_user_func( $this->refresh ); }
+		$attempts = ( null === $idempotency_key && ! $this->refresh ) ? 1 : 2;
 		$error    = null;
 		for ( $i = 1; $i <= $attempts; $i++ ) {
 			try {
 				return $this->send( $service, $method, $body, $idempotency_key );
 			} catch ( ApiException $e ) {
+				if ( 401 === $e->get_http_status() && $this->refresh && 1 === $i ) {
+					$this->token = call_user_func( $this->refresh );
+					continue; }
 				$error = $e;
 				if ( ! $e->is_retryable() ) {
 					break;

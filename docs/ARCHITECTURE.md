@@ -25,7 +25,7 @@ The Bitsnap order is a payment record. It carries `source = woocommerce`, so Bit
 | `bitsnap-for-woocommerce.php` | Header, constants, HPOS and Blocks declarations, bootstrap |
 | `src/Autoloader.php` | PSR-4 loader. The plugin has **no Composer runtime dependencies** |
 | `src/Plugin.php` | Hooks and a small service container |
-| `src/Credentials.php` | Where API keys and webhook secrets come from. Manual mode today, OAuth later (see below) |
+| `src/Credentials.php`, `src/OAuth/` | Credential provider and OAuth registration, PKCE and token lifecycle |
 | `src/Woo/` | Code that needs WooCommerce: `Gateway`, `OrderReader`, `OrderUpdater`, `PaymentStarter`, `OrderSync`, `ReturnPage`, `Reconciler`, `Refunder` |
 | `src/Mapping/`, `src/Webhook/{Signature,Event,EventPlanner}`, `src/Support/{Money,Redactor,Secrets,IdempotencyKey}`, `src/Api/ErrorMapper` | **Pure** classes with no WordPress calls, covered by unit tests |
 | `src/Api/Client.php` | Thin `wp_remote_post` wrapper for Connect JSON |
@@ -40,7 +40,7 @@ This is what the plugin relies on. The source of truth is section 9 of the check
 
 ### Credentials
 
-A `bs_test_` / `bs_live_` API key per environment, and a `whsec_` webhook secret per environment. The key needs `checkout:create`, `orders:read`, `refunds:write`, and `customers:pii` to send buyer details. `webhooks:write` (and `webhooks:read`) is needed only for the "Register webhook" button.
+OAuth `bsat_` access and refresh tokens take precedence per environment; otherwise the plugin uses manual API keys and webhook secrets. OAuth secrets use `Support\Secrets` encryption. Access tokens refresh within 60 seconds of expiry and after a 401, with a short transient lock.
 
 ### `CheckoutService.CreateCheckoutSession`
 
@@ -117,7 +117,7 @@ Response codes:
 
 ### Credentials provider (seam for OAuth)
 
-`Credentials` is the only class that knows where keys come from. Everything else asks it for `api_key( $env )`, `webhook_secret( $env )`, `webhook_secrets()`, `base_url()` and `environment()`. Phase 2 ("Connect with Bitsnap", OAuth with PKCE) adds a mode that stores `bsat_` tokens and fills the same values. Nothing else changes. Secrets in the database are encrypted with libsodium (`Support\Secrets`), with a key derived from `AUTH_KEY` and `SECURE_AUTH_KEY`.
+`Credentials` is the only class that knows where API credentials come from. OAuth fills the same API-token and webhook-secret fields as manual mode. OAuth connection records are scoped to environment and the active API base URL. Client registrations are cached per site, base URL and environment.
 
 ## Order meta
 

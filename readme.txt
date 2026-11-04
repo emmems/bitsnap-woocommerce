@@ -19,7 +19,7 @@ Bitsnap for WooCommerce adds a payment method to your checkout. When a buyer cho
 
 * Works with the Cart and Checkout Blocks and with the classic checkout.
 * Compatible with High-Performance Order Storage.
-* Test mode and live mode with separate API keys and webhook secrets.
+* Test mode and live mode with separate OAuth connections or manual API keys and webhook secrets.
 * Order status follows the payment: paid, failed, cancelled. Cash on delivery moves the order to "processing", a manual transfer to "on hold" until the money arrives.
 * Refunds from the WooCommerce order screen, full or partial, for payment methods that can be refunded through Bitsnap. Refunds you make in the Bitsnap dashboard also appear in WooCommerce.
 * Sends the cart as it is in WooCommerce: lines with VAT rates, shipping, fees, coupon discounts and the exact total.
@@ -55,11 +55,10 @@ When you choose Connect with Bitsnap, the plugin uses `https://bitsnap.pl/oauth/
 == Installation ==
 
 1. Install and activate WooCommerce, then this plugin.
-2. In Bitsnap, create a test API key.
-3. Go to WooCommerce > Settings > Payments > Bitsnap. Paste the test API key and save.
-4. Click "Register webhook" under the test credentials. If your key cannot create webhooks, create one in Bitsnap for the URL shown on the page and paste its secret.
+2. Go to WooCommerce > Settings > Payments > Bitsnap and click "Connect with Bitsnap" for test. Sign in, choose a project and approve access. The plugin registers the webhook and saves its secret.
+3. For manual setup, open Advanced settings, enter a test API key, save, then click "Register webhook". If the key cannot create webhooks, create one in Bitsnap for the URL shown and paste its secret.
 5. Place a test order and pay it in test mode.
-6. Repeat for the live key, then turn off "Test mode" and enable the payment method.
+6. Connect the live environment separately, or enter its key under Advanced. Turn off "Test mode" and enable the payment method.
 
 == Frequently Asked Questions ==
 
