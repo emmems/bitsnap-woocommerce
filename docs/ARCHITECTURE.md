@@ -23,7 +23,8 @@ The Bitsnap order is a payment record. It carries `source = woocommerce`, so Bit
 | Path | Role |
 | --- | --- |
 | `bitsnap-for-woocommerce.php` | Header, constants, HPOS and Blocks declarations, bootstrap |
-| `src/Autoloader.php` | PSR-4 loader. The plugin has **no Composer runtime dependencies** |
+| `src/Autoloader.php` | PSR-4 loader for our own classes. The only Composer runtime dependency is Plugin Update Checker (see `src/Updates/`) |
+| `src/Updates/Updater.php` | Self-hosted updates. The plugin is not on WordPress.org: it builds a Plugin Update Checker for the GitHub repository (branch `main`, release assets only, asset name `bitsnap-for-woocommerce.zip`) in the admin, cron and WP-CLI. A result filter drops any update whose package is not that asset, so a failed release can never install a source archive. Off with `BITSNAP_WC_DISABLE_UPDATES` or the `bitsnap_wc_enable_updates` filter |
 | `src/Plugin.php` | Hooks and a small service container |
 | `src/Credentials.php` | The one class that knows where API credentials come from: OAuth token first, then the manual key |
 | `src/OAuth/` | "Connect with Bitsnap". `Service` (registration, PKCE, state, refresh, revoke) and `Protocol` are **pure**. `Storage`, `TokenStore` and `Transport` are the seams; `TransientStorage`, `SettingsTokenStore` and `WpTransport` are the WordPress side. `ApiTokens` gives `Api\Client` its token |

@@ -5,7 +5,7 @@ Requires at least: 6.5
 Tested up to: 7.1
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 0.1.0
+Stable tag: 0.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -31,6 +31,7 @@ Webhook retries deduplicate by eventId, with id:event compatibility for older se
 * Reads the buyer's NIP from the invoice plugin you already use. The plugin adds no checkout field.
 * Checks pending orders again when the buyer returns to the shop, and every 15 minutes in the background, so a delayed webhook does not leave an order unpaid.
 * API keys and webhook secrets are stored encrypted. The debug log hides secrets.
+* Updates from wp-admin: new versions are published as GitHub releases and appear under Dashboard > Updates like any other plugin update.
 * Polish and English.
 
 **You need**
@@ -58,13 +59,19 @@ The base address is https://bitsnap.pl. It can be changed under "Advanced" in th
 
 **6. Connect with Bitsnap.** Only when an administrator clicks "Connect with Bitsnap", the plugin registers your shop as an OAuth client at `https://bitsnap.pl/oauth/register`. It sends the name "Bitsnap for WooCommerce" with your site's host name, the address of the plugin's callback page in your admin, and the plugin version. Then it sends the administrator's browser to `https://bitsnap.pl/oauth/authorize`, where they sign in to Bitsnap, pick a project and approve. The plugin exchanges the returned code at `/oauth/token` (with a PKCE code verifier), and later refreshes the token there before it expires, when the shop calls Bitsnap. "Disconnect" sends the refresh token to `/oauth/revoke`. The tokens are stored encrypted in your database, and each environment (test, live) has its own. Every API request carries your API key or the OAuth access token. Bitsnap Terms of Service: https://bitsnap.pl/regulamin. Bitsnap Privacy Policy: https://bitsnap.pl/polityka-prywatnosci.
 
+**7. Update checks (GitHub).** This plugin is not hosted on WordPress.org, so it looks for new versions itself. In the WordPress admin, in WP-Cron and in WP-CLI (about twice a day, and when you open the Updates or Plugins screens), it sends a request to the GitHub API at `https://api.github.com/repos/emmems/bitsnap-woocommerce/` to read the latest release and its changelog, the plugin's main file header and the `readme.txt` file. When you update, WordPress downloads the plugin zip from `https://github.com/emmems/bitsnap-woocommerce/releases/` (GitHub may redirect the download to its own content servers). The requests carry no information about your shop, your customers or your Bitsnap account; GitHub sees your server's IP address and the standard WordPress user agent, which includes your site address. Checks run only in the admin, in cron and in WP-CLI, never when a visitor loads a page. To turn them off, define `BITSNAP_WC_DISABLE_UPDATES` as true in `wp-config.php`, or return false from the `bitsnap_wc_enable_updates` filter. GitHub Terms of Service: https://docs.github.com/en/site-policy/github-terms/github-terms-of-service. GitHub Privacy Statement: https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement.
+
 == Installation ==
 
-1. Install and activate WooCommerce, then this plugin.
-2. Go to WooCommerce > Settings > Payments > Bitsnap and click "Connect with Bitsnap" under "Test credentials". Sign in, choose a project and approve access. The plugin registers the webhook and saves its secret.
-3. For a manual setup instead, enter a test API key under "Test credentials", save, then click "Register webhook". If the key cannot create webhooks, create one in Bitsnap for the URL shown and paste its secret.
-4. Place a test order and pay it in test mode.
-5. Connect the live environment the same way, under "Live credentials". Turn off "Test mode" and enable the payment method.
+This plugin is not in the WordPress.org plugin directory. Install it from a zip file:
+
+1. Install and activate WooCommerce.
+2. Download the newest `bitsnap-for-woocommerce.zip` from https://github.com/emmems/bitsnap-woocommerce/releases/latest/download/bitsnap-for-woocommerce.zip
+3. In wp-admin go to Plugins > Add New > Upload Plugin, choose the zip, click "Install Now", then "Activate Plugin".
+4. Go to WooCommerce > Settings > Payments > Bitsnap and click "Connect with Bitsnap" under "Test credentials". Sign in, choose a project and approve access. The plugin registers the webhook and saves its secret.
+5. For a manual setup instead, enter a test API key under "Test credentials", save, then click "Register webhook". If the key cannot create webhooks, create one in Bitsnap for the URL shown and paste its secret.
+6. Place a test order and pay it in test mode.
+7. Connect the live environment the same way, under "Live credentials". Turn off "Test mode" and enable the payment method.
 
 == Frequently Asked Questions ==
 
@@ -79,6 +86,10 @@ Bitsnap revoked the access, or it expired. Click "Connect with Bitsnap" again. T
 = "Connect with Bitsnap" says my shop needs https. =
 
 OAuth needs a secure address for the callback. Switch the shop to https, or use an API key. A `localhost` address works for development.
+
+= How do I update the plugin? =
+
+Open Dashboard > Updates (or Plugins). When a newer release exists on GitHub, it is offered there like any other plugin update, and you can turn on automatic updates for it. You can also upload the newest zip again under Plugins > Add New > Upload Plugin and choose to replace the current version. To stop the plugin from checking for updates, add `define( 'BITSNAP_WC_DISABLE_UPDATES', true );` to `wp-config.php`, or return false from the `bitsnap_wc_enable_updates` filter.
 
 = Do buyers pay on my site? =
 
@@ -117,10 +128,17 @@ https://github.com/emmems/bitsnap-woocommerce. The block checkout script in `bui
 
 == Changelog ==
 
+= 0.2.0 =
+* Self-hosted releases with automatic updates from GitHub. Every release publishes one `bitsnap-for-woocommerce.zip`, and the plugin offers it in wp-admin updates. Updates can be turned off with `BITSNAP_WC_DISABLE_UPDATES`.
+* The plugin is installed from that zip (Plugins > Add New > Upload Plugin), not from WordPress.org.
+
 = 0.1.0 =
 * First release: redirect gateway, Cart and Checkout Blocks, HPOS, webhooks, return-page check, scheduled reconciliation, refunds, test and live mode, Connect with Bitsnap (OAuth) or manual API keys.
 
 == Upgrade Notice ==
+
+= 0.2.0 =
+From this version the plugin updates itself from GitHub releases. No settings change.
 
 = 0.1.0 =
 First release.
