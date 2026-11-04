@@ -21,6 +21,9 @@ use Bitsnap\WooCommerce\Woo\Reconciler;
 use Bitsnap\WooCommerce\Woo\ReturnPage;
 
 // wp eval-file runs this file inside a function, so counters live in $GLOBALS.
+delete_option( 'bitsnap_oauth_tokens_test' );
+delete_option( 'bitsnap_oauth_tokens_live' );
+delete_option( 'bitsnap_reconcile_page' );
 $GLOBALS['smoke_failures'] = 0;
 $GLOBALS['smoke_checks']   = 0;
 
@@ -185,6 +188,11 @@ try {
 	smoke_check( false, 'feature compatibility lookup', $e->getMessage() );
 }
 
+// A failed cold wp-env startup can leave WooCommerce's install lease behind.
+// This suite owns a disposable database: finish installation before fixtures.
+delete_option( 'wc_installing' );
+delete_transient( 'wc_installing' );
+WC_Install::install();
 $plugin = Plugin::instance();
 
 update_option( 'woocommerce_currency', 'PLN' );
@@ -192,6 +200,7 @@ update_option( 'woocommerce_calc_taxes', 'yes' );
 update_option( 'woocommerce_prices_include_tax', 'yes' );
 update_option( 'woocommerce_default_country', 'PL' );
 update_option( 'woocommerce_tax_based_on', 'base' );
+update_option( 'woocommerce_shipping_tax_class', '' );
 update_option( 'woocommerce_coupons_enabled', 'yes' );
 global $wpdb;
 $wpdb->query( "DELETE FROM {$wpdb->prefix}woocommerce_tax_rates" );
@@ -304,6 +313,11 @@ function smoke_order( $product, $coupon = null, $nip = '' ) {
 	return $order;
 }
 
+smoke_section( 'API destination validation' );
+foreach ( array( 'http://bitsnap.pl', 'https://127.0.0.1', 'https://10.0.0.1', 'https://169.254.169.254', 'http://localhost' ) as $unsafe_url ) {
+	smoke_check( ! \Bitsnap\WooCommerce\Support\ApiUrl::valid( $unsafe_url ), 'unsafe API destination rejected: ' . $unsafe_url );
+}
+
 smoke_section( 'Starting a payment' );
 $order = smoke_order( $product, $coupon->get_code(), '123-456-32-18' );
 echo '  order #' . $order->get_id() . ' total ' . $order->get_total() . ' ' . $order->get_currency() . "\n";
@@ -383,7 +397,7 @@ function smoke_event( $order, $type, $id, $state, $gateway_name = 'blik', $extra
 					'id'    => $id,
 					'event' => $type,
 					'order' => array(
-						'id'                => 'ord_smoke_1',
+						'id'                => (string) $order->get_meta( Meta::ORDER_ID ),
 						'clientReferenceId' => (string) $order->get_id(),
 						'metadata'          => array_merge( array( 'source' => 'woocommerce', 'wcOrderKey' => $order->get_order_key(), 'siteUrl' => untrailingslashit( home_url() ) ), $meta_override ),
 						'paymentGateway'    => $gateway_name,
@@ -400,6 +414,21 @@ function smoke_event( $order, $type, $id, $state, $gateway_name = 'blik', $extra
 
 function smoke_deliver( $body, $secret = 'whsec_SMOKESECRET' ) {
 	return Plugin::instance()->handler()->process( 'POST', $body, Signature::compute( $body, $secret ) );
+}
+
+// A second PHP/WordPress request shares the database but no process-local state.
+function smoke_other_request( $code ) {
+	$pipes = array();
+	$process = proc_open( array( 'wp', 'eval', $code ), array( 1 => array( 'pipe', 'w' ), 2 => array( 'pipe', 'w' ) ), $pipes );
+	$output = stream_get_contents( $pipes[1] );
+	$error = stream_get_contents( $pipes[2] );
+	fclose( $pipes[1] );
+	fclose( $pipes[2] );
+	$status = proc_close( $process );
+	return array( $status, trim( $output ), $error );
+}
+function smoke_concurrent_delivery( $body ) {
+	return smoke_other_request( '$body=base64_decode(' . var_export( base64_encode( $body ), true ) . '); echo json_encode(\Bitsnap\WooCommerce\Plugin::instance()->handler()->process("POST",$body,hash_hmac("sha512",$body,"whsec_SMOKESECRET")));' );
 }
 
 smoke_section( 'Webhooks' );
@@ -466,6 +495,47 @@ smoke_check( 'on-hold' === wc_get_order( $man->get_id() )->get_status(), 'manual
 smoke_deliver( smoke_event( $man, 'TRANSACTION_SUCCESS', 'evt_m2', 'PAYMENT_STATE_PAID', 'manual', array(), array(), 'pay_man' ) );
 smoke_check( wc_get_order( $man->get_id() )->is_paid(), 'a confirmed manual transfer completes the order' );
 
+smoke_section( 'Invoice, payment attempts and concurrent delivery' );
+$invoice = json_decode( smoke_event( $order, 'INVOICE_ISSUED', 'evt_invoice', 'PAYMENT_STATE_PAID' ), true );
+$invoice['eventData']['order']['invoiceUrl'] = 'https://bitsnap.pl/invoice/test';
+$invoice = wp_json_encode( $invoice );
+smoke_check( array( 200, 'ok' ) === smoke_deliver( $invoice ), 'complete signed invoice delivery succeeds' );
+smoke_check( 'https://bitsnap.pl/invoice/test' === wc_get_order( $order->get_id() )->get_meta( Meta::INVOICE_URL ), 'invoice delivery records its URL' );
+smoke_check( array( 200, 'duplicate' ) === smoke_deliver( $invoice ), 'invoice event is deduplicated' );
+$stale = smoke_order( $product );
+$stale->update_meta_data( Meta::ORDER_ID, 'new_attempt' );
+$stale->update_meta_data( Meta::ENVIRONMENT, 'test' );
+$stale->save();
+$stale_event = json_decode( smoke_event( $stale, 'TRANSACTION_FAILURE', 'evt_stale_failure', 'PAYMENT_STATE_FAILED' ), true );
+$stale_event['eventData']['order']['id'] = 'old_attempt';
+smoke_deliver( wp_json_encode( $stale_event ) );
+smoke_check( 'pending' === wc_get_order( $stale->get_id() )->get_status(), 'failure from an older attempt cannot cancel the current attempt' );
+$stale_event['eventData']['id'] = 'evt_stale_underpaid';
+$stale_event['eventData']['event'] = 'TRANSACTION_SUCCESS';
+$stale_event['eventData']['order']['amountPaid']['amount'] = 1;
+smoke_deliver( wp_json_encode( $stale_event ) );
+smoke_check( 'on-hold' === wc_get_order( $stale->get_id() )->get_status(), 'underpayment puts an edited order on hold' );
+$stale_event['eventData']['id'] = 'evt_stale_paid';
+$stale_event['eventData']['order']['amountPaid']['amount'] = (int) round( $stale->get_total() * 100 );
+smoke_deliver( wp_json_encode( $stale_event ) );
+smoke_check( wc_get_order( $stale->get_id() )->is_paid() && 'old_attempt' === wc_get_order( $stale->get_id() )->get_meta( Meta::PAID_ORDER_ID ), 'an older attempt paying the full total is accepted and retained for refunds' );
+$race = smoke_order( $product );
+$race->update_meta_data( Meta::ORDER_ID, 'race_attempt' );
+$race->update_meta_data( Meta::ENVIRONMENT, 'test' );
+$race->save();
+$race_body = smoke_event( $race, 'TRANSACTION_SUCCESS', 'evt_race', 'PAYMENT_STATE_PAID' );
+$nested = null;
+$reenter = static function ( $id ) use ( $race, $race_body, &$nested ) {
+	if ( $id === $race->get_id() ) {
+		$child = smoke_concurrent_delivery( $race_body );
+		$nested = json_decode( $child[1], true );
+	}
+};
+add_action( 'woocommerce_pre_payment_complete', $reenter );
+smoke_check( array( 200, 'ok' ) === smoke_deliver( $race_body ), 'outer payment delivery succeeds' );
+remove_action( 'woocommerce_pre_payment_complete', $reenter );
+smoke_check( array( 500, 'error' ) === $nested && array( 200, 'duplicate' ) === smoke_deliver( $race_body ), 'concurrent duplicate waits for retry and becomes a duplicate' );
+
 // ---------------------------------------------------------------- refunds
 
 smoke_section( 'Refunds' );
@@ -474,7 +544,19 @@ $GLOBALS['bitsnap_mock']['CreateRefund'] = array(
 	200,
 	array( 'refund' => array( 'id' => 'ref_a', 'orderId' => 'ord_smoke_1', 'amount' => array( 'amount' => 500, 'currency' => 'PLN' ), 'status' => 'REFUND_STATUS_SUCCEEDED', 'createdAt' => gmdate( 'c' ) ) ),
 );
+$refund_answer = $GLOBALS['bitsnap_mock']['CreateRefund'];
+$refund_overlap = null;
+$equal_refund_overlap = null;
+$GLOBALS['bitsnap_mock']['CreateRefund'] = static function () use ( $order, $refund_answer, &$refund_overlap, &$equal_refund_overlap ) {
+	$equal_refund_overlap = smoke_other_request( '$refund=wc_create_refund(array("order_id"=>' . $order->get_id() . ',"amount"=>"5.00","refund_payment"=>true)); echo is_wp_error($refund)?"blocked":"accepted";' );
+	$child = smoke_concurrent_delivery( smoke_event( $order, 'REFUND_SUCCEEDED', 'evt_refund_overlap', 'PAYMENT_STATE_PARTIALLY_REFUNDED', 'blik', array( 'refund' => $refund_answer[1]['refund'] ) ) );
+	$refund_overlap = json_decode( $child[1], true );
+	return $refund_answer;
+};
 $refund = wc_create_refund( array( 'order_id' => $order->get_id(), 'amount' => '5.00', 'reason' => 'Smoke test', 'refund_payment' => true ) );
+smoke_check( 'blocked' === $equal_refund_overlap[1], 'a concurrent equal-value refund cannot share the active submission' );
+smoke_check( array( 500, 'error' ) === $refund_overlap, 'refund webhook during process_refund is retried under the order lock' );
+$GLOBALS['bitsnap_mock']['CreateRefund'] = $refund_answer;
 smoke_check( ! is_wp_error( $refund ), 'admin refund through the gateway succeeds', is_wp_error( $refund ) ? $refund->get_error_message() : '' );
 $rr = smoke_last_request( 'CreateRefund' );
 smoke_check( null !== $rr && 'woo-refund-' . ( is_wp_error( $refund ) ? '?' : $refund->get_id() ) === $rr['headers']['Idempotency-Key'], 'refund idempotency key is woo-refund-<refund id>', $rr['headers']['Idempotency-Key'] ?? '' );
@@ -491,8 +573,24 @@ $dash = smoke_event( $order, 'REFUND_SUCCEEDED', 'evt_r2', 'PAYMENT_STATE_PARTIA
 smoke_deliver( $dash );
 $order = wc_get_order( $order->get_id() );
 smoke_check( $before + 1 === count( $order->get_refunds() ) && 15.0 === (float) $order->get_total_refunded(), 'a refund made in the Bitsnap dashboard appears in WooCommerce (total refunded ' . $order->get_total_refunded() . ')' );
+$identity_order = wc_get_order( $order->get_id() );
+$identity_order->delete_meta_data( Meta::REFUND_IDS );
+$identity_order->save();
 smoke_deliver( smoke_event( $order, 'REFUND_SUCCEEDED', 'evt_r3', 'PAYMENT_STATE_PARTIALLY_REFUNDED', 'blik', array( 'refund' => array( 'id' => 'ref_dash', 'amount' => array( 'amount' => '1000', 'currency' => 'PLN' ) ) ) ) );
-smoke_check( $before + 1 === count( wc_get_order( $order->get_id() )->get_refunds() ), 'the same Bitsnap refund id is not recorded twice (different event id)' );
+smoke_check( $before + 1 === count( wc_get_order( $order->get_id() )->get_refunds() ), 'refund identity on the refund record prevents duplication after the order list is cleared' );
+
+$retry_body = smoke_event( $order, 'REFUND_SUCCEEDED', 'evt_refund_retry', 'PAYMENT_STATE_PARTIALLY_REFUNDED', 'blik', array( 'refund' => array( 'id' => 'ref_retry', 'amount' => array( 'amount' => 100, 'currency' => 'PLN' ) ) ) );
+$fail_refund = static function ( $refund ) { throw new Exception( 'Simulated database failure' ); };
+add_action( 'woocommerce_before_order_refund_object_save', $fail_refund );
+$retry_result = smoke_deliver( $retry_body );
+smoke_check( array( 500, 'error' ) === $retry_result, 'failed refund persistence returns 500', wp_json_encode( $retry_result ) );
+remove_action( 'woocommerce_before_order_refund_object_save', $fail_refund );
+smoke_check( ! in_array( 'evt_refund_retry', (array) wc_get_order( $order->get_id() )->get_meta( Meta::EVENTS ), true ), 'failed refund event is not remembered' );
+smoke_check( array( 200, 'ok' ) === smoke_deliver( $retry_body ), 'refund delivery can succeed on retry' );
+// Keep existing count assertions focused on the earlier dashboard refund.
+foreach ( wc_get_order( $order->get_id() )->get_refunds() as $retry_refund ) {
+	if ( 'ref_retry' === $retry_refund->get_meta( '_bitsnap_refund_id' ) ) { $retry_refund->delete( true ); }
+}
 
 $GLOBALS['bitsnap_mock']['CreateRefund'] = array( 200, array( 'refund' => array( 'id' => 'ref_m', 'status' => 'REFUND_STATUS_MANUAL_REQUIRED' ) ) );
 $manual = wc_create_refund( array( 'order_id' => $order->get_id(), 'amount' => '1.00', 'refund_payment' => true ) );
@@ -501,6 +599,18 @@ smoke_check( $before + 1 === count( wc_get_order( $order->get_id() )->get_refund
 $GLOBALS['bitsnap_mock']['CreateRefund'] = array( 409, array( 'code' => 'failed_precondition', 'message' => '[refund_not_supported] x', 'details' => array( array( 'debug' => array( 'reason' => 'refund_not_supported' ) ) ) ) );
 $unsupported = wc_create_refund( array( 'order_id' => $order->get_id(), 'amount' => '1.00', 'refund_payment' => true ) );
 smoke_check( is_wp_error( $unsupported ) && false !== strpos( $unsupported->get_error_message(), 'cannot be refunded through Bitsnap' ), 'refund_not_supported becomes a clear WP_Error' );
+
+smoke_section( 'Interrupted refund recovery' );
+$GLOBALS['bitsnap_mock']['CreateRefund'] = array( 503, array( 'code' => 'unavailable' ) );
+$lost = wc_create_refund( array( 'order_id' => $order->get_id(), 'amount' => '1.00', 'refund_payment' => true ) );
+$pending = wc_get_order( $order->get_id() )->get_meta( '_bitsnap_pending_refund' );
+smoke_check( is_wp_error( $lost ) && is_array( $pending ) && ! empty( $pending['wc_id'] ), 'ambiguous refund failure retains the durable request association' );
+$GLOBALS['bitsnap_mock']['CreateRefund'] = array( 200, array( 'refund' => array( 'id' => 'ref_recovered', 'status' => 'REFUND_STATUS_SUCCEEDED' ) ) );
+$recover_body = smoke_event( $order, 'REFUND_SUCCEEDED', 'evt_recover_refund', 'PAYMENT_STATE_PARTIALLY_REFUNDED', 'blik', array( 'refund' => array( 'id' => 'ref_recovered', 'amount' => array( 'amount' => 100, 'currency' => 'PLN' ) ) ) );
+smoke_check( array( 200, 'ok' ) === smoke_deliver( $recover_body ), 'webhook recovers an interrupted refund submission' );
+$replay = smoke_last_request( 'CreateRefund' );
+smoke_check( 'woo-refund-' . $pending['wc_id'] === $replay['headers']['Idempotency-Key'], 'recovery replays the original refund idempotency key' );
+smoke_check( ! wc_get_order( $order->get_id() )->get_meta( '_bitsnap_pending_refund' ), 'resolved pending refund association is cleared' );
 
 // ---------------------------------------------------------------- return page and reconcile
 
@@ -511,12 +621,15 @@ $GLOBALS['bitsnap_mock']['GetOrder'] = static function ( $req ) {
 		200,
 		array(
 			'order' => array(
-				'id'                => 'ord_x',
+				'id'                => (string) $o->get_meta( Meta::ORDER_ID ),
+				'amountPaid'        => array( 'amount' => (int) round( $o->get_total() * 100 ), 'currency' => $o->get_currency() ),
 				'clientReferenceId' => $req['clientReferenceId'],
 				'metadata'          => array( 'source' => 'woocommerce', 'wcOrderKey' => $o->get_order_key() ),
+				'buyer'             => array( 'email' => 'response-buyer@example.com' ),
+				'url'               => 'https://bitsnap.pl/pay/private_response',
 				'paymentGateway'    => 'payu',
 				'paymentId'         => 'pay_poll',
-				'paymentState'      => $GLOBALS['bitsnap_state'] ?? 'PAYMENT_STATE_PAID',
+				'paymentState'      => (int) ( $GLOBALS['bitsnap_batch_paid_id'] ?? 0 ) === $o->get_id() ? 'PAYMENT_STATE_PAID' : ( $GLOBALS['bitsnap_state'] ?? 'PAYMENT_STATE_PAID' ),
 			),
 		),
 	);
@@ -566,6 +679,27 @@ smoke_check( wc_get_order( $rc->get_id() )->is_paid(), 'the reconcile job comple
 smoke_check( 'pending' === wc_get_order( $fresh->get_id() )->get_status(), 'the reconcile job leaves a fresh order alone' );
 smoke_check( 'pending' === wc_get_order( $old->get_id() )->get_status() && '' !== (string) wc_get_order( $old->get_id() )->get_meta( Meta::GAVE_UP ), 'the reconcile job gives up on an order older than 48 hours' );
 smoke_check( false !== as_next_scheduled_action( Reconciler::HOOK, array(), Reconciler::GROUP ), 'the recurring Action Scheduler action is scheduled' );
+
+smoke_section( 'Reconciliation pagination' );
+$GLOBALS['bitsnap_state'] = 'PAYMENT_STATE_PENDING';
+$batch_ids = array();
+for ( $i = 0; $i < 45; ++$i ) {
+	$pending = smoke_order( $product );
+	$pending->update_meta_data( Meta::ORDER_ID, 'batch_' . $i );
+	$pending->update_meta_data( Meta::ENVIRONMENT, 'test' );
+	$pending->set_date_created( time() - 3600 - $i );
+	$pending->save();
+	$batch_ids[] = $pending->get_id();
+}
+$GLOBALS['bitsnap_batch_paid_id'] = end( $batch_ids );
+delete_option( 'bitsnap_reconcile_page' );
+for ( $i = 0; $i < 4; ++$i ) {
+	$plugin->reconciler()->run();
+}
+$checked_ids = array_filter( $batch_ids, static function ( $id ) { return (int) wc_get_order( $id )->get_meta( Meta::RECONCILED_AT ) > 0; } );
+smoke_check( 45 === count( $checked_ids ), 'all 45 persistent pending orders are checked across batches' );
+smoke_check( wc_get_order( $GLOBALS['bitsnap_batch_paid_id'] )->is_paid(), 'persistent newer pending orders cannot starve an older paid order' );
+unset( $GLOBALS['bitsnap_batch_paid_id'] );
 
 // ---------------------------------------------------------------- blocks
 
@@ -687,7 +821,7 @@ $connect = static function ( $env, $mutate = null ) use ( $actions, $callback ) 
 	return array( 'url' => $url, 'query' => $query, 'back' => $back, 'get' => $_GET );
 };
 $raw_option = static function () {
-	return get_option( Settings::OPTION );
+	return Plugin::instance()->settings()->all();
 };
 
 $html = ( new Gateway() )->generate_settings_html( ( new Gateway() )->get_form_fields(), false );
@@ -797,21 +931,43 @@ $GLOBALS['bitsnap_mock']['GetOrder'] = static function ( $body, $headers ) {
 	return array( 200, array( 'order' => array( 'id' => 'ord_x', 'clientReferenceId' => $body['clientReferenceId'] ?? '', 'paymentState' => 'PAYMENT_STATE_PENDING' ) ) );
 };
 
+// Actual competing PHP requests: the loser must observe the winner's tokens.
+$token_store = new SettingsTokenStore( $plugin->settings() );
+$backup_tokens = $token_store->get( 'test', true );
+$settings->update( array( 'oauth_test_expires' => (string) ( time() + 5 ) ) );
+$process_lock = new \Bitsnap\WooCommerce\Support\Lock( 'tokens:test' );
+delete_option( 'bitsnap_smoke_child_ready' );
+$pipes = array();
+$child = proc_open( array( 'wp', 'eval', 'update_option("bitsnap_smoke_child_ready",1,false); echo \Bitsnap\WooCommerce\Plugin::instance()->oauth()->access_token("test");' ), array( 1 => array( 'pipe', 'w' ), 2 => array( 'pipe', 'w' ) ), $pipes );
+for ( $i = 0; $i < 100; ++$i ) {
+	wp_cache_delete( 'bitsnap_smoke_child_ready', 'options' );
+	if ( get_option( 'bitsnap_smoke_child_ready' ) ) { break; }
+	usleep( 50000 );
+}
+$settings->update( array( 'oauth_test_expires' => (string) ( time() + 3500 ) ), array( 'oauth_test_access' => 'bsat_process_winner', 'oauth_test_refresh' => 'rt_process_winner' ) );
+$process_lock->release();
+$child_output = trim( stream_get_contents( $pipes[1] ) );
+$child_error = stream_get_contents( $pipes[2] );
+fclose( $pipes[1] ); fclose( $pipes[2] );
+smoke_check( 0 === proc_close( $child ) && 'bsat_process_winner' === $child_output, 'a concurrent refresh request uses the winner token without spending the old refresh token', $child_error );
+$token_store->save( 'test', $backup_tokens );
+delete_option( 'bitsnap_smoke_child_ready' );
+
 // The refresh lock: the loser waits, re-reads the database and uses the winner's tokens.
 $other_process = static function () use ( $wpdb ) {
 	// What another PHP request does: writes new tokens to the database behind this request's cache.
-	$row = maybe_unserialize( $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", Settings::OPTION ) ) );
+	$row = maybe_unserialize( $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", 'bitsnap_oauth_tokens_test' ) ) );
 	$row['oauth_test_access']  = Plugin::instance()->settings()->seal( 'bsat_from_winner' );
 	$row['oauth_test_refresh'] = Plugin::instance()->settings()->seal( 'rt_from_winner' );
 	$row['oauth_test_expires'] = (string) ( time() + 3500 );
-	$wpdb->update( $wpdb->options, array( 'option_value' => maybe_serialize( $row ) ), array( 'option_name' => Settings::OPTION ) );
-	delete_transient( 'bitsnap_oauth_refresh_test' );
+	$wpdb->update( $wpdb->options, array( 'option_value' => maybe_serialize( $row ) ), array( 'option_name' => 'bitsnap_oauth_tokens_test' ) );
+	$GLOBALS['smoke_refresh_lock']->release();
 };
 $plugin->settings()->update( array( 'oauth_test_expires' => (string) ( time() + 10 ) ) );
 $storage = new TransientStorage();
 smoke_check( true === $storage->add( 'bitsnap_smoke_lock', 1, 30 ) && false === $storage->add( 'bitsnap_smoke_lock', 1, 30 ), 'the transient lock admits one holder' );
 $storage->delete( 'bitsnap_smoke_lock' );
-set_transient( 'bitsnap_oauth_refresh_test', 1, 30 );
+$GLOBALS['smoke_refresh_lock'] = new \Bitsnap\WooCommerce\Support\Lock( 'tokens:test' );
 $waits  = 0;
 $loser  = new OAuthService(
 	new WpTransport(),
@@ -906,6 +1062,7 @@ $_REQUEST = array( '_wpnonce' => wp_create_nonce( 'bitsnap_oauth_disconnect_test
 smoke_redirect_of( array( $actions, 'disconnect' ) );
 $notice = $flash();
 smoke_check( 'warning' === $notice['type'] && ! $plugin->oauth()->connected( 'test' ), 'a webhook that cannot be deleted gives a warning, and the store is disconnected anyway' );
+smoke_check( '' === $settings->get( 'webhook_id_test' ) && '' === $plugin->credentials()->webhook_secret( 'test' ), 'failed webhook deletion still clears local webhook credentials' );
 $GLOBALS['bitsnap_mock']['DeleteWebhook'] = array( 200, array() );
 
 // The manual "Register webhook" button stores the id too.
@@ -937,6 +1094,7 @@ smoke_check( '' !== $log_text, 'the debug log has entries' );
 smoke_check( false === strpos( $log_text, 'SMOKEKEY' ) && false === strpos( $log_text, 'SMOKESECRET' ) && false === strpos( $log_text, 'bs_test_NEW' ), 'the log contains no key or secret' );
 smoke_check( false === strpos( $log_text, 'bsat_smoke' ) && false === strpos( $log_text, 'rt_smoke' ) && false === strpos( $log_text, 'rt_from_winner' ) && false === strpos( $log_text, 'bsat_from_winner' ) && false === strpos( $log_text, 'whsec_OAUTH' ), 'the log contains no OAuth token or webhook secret' );
 smoke_check( false === strpos( $log_text, 'anna@example.com' ), 'the log contains no buyer email' );
+smoke_check( false === strpos( $log_text, 'response-buyer@example.com' ) && false === strpos( $log_text, 'private_response' ) && false === strpos( $log_text, $order->get_order_key() ), 'logs omit GetOrder buyer details, payment URLs and WooCommerce order keys' );
 
 echo "\n{$GLOBALS['smoke_checks']} checks, {$GLOBALS['smoke_failures']} failed.\n";
 if ( $GLOBALS['smoke_failures'] > 0 ) {

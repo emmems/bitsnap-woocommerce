@@ -35,3 +35,27 @@ jobs:
 
       - name: Run unit tests
         run: vendor/bin/phpunit
+
+  smoke:
+    name: WooCommerce HPOS ${{ matrix.hpos }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        hpos: ['no', 'yes']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Start WordPress (retry a cold database startup once)
+        run: npm run env:start || npm run env:start
+      - run: npx wp-env run cli wp wc cot sync
+      - run: npx wp-env run cli wp option update woocommerce_custom_orders_table_enabled ${{ matrix.hpos }}
+      - run: npm run test:smoke
+      - name: Destroy WordPress environment
+        if: always()
+        run: printf "y\n" | npx wp-env destroy

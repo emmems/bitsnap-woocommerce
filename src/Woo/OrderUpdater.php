@@ -267,7 +267,6 @@ final class OrderUpdater {
 				/* translators: 1: payment method such as BLIK, 2: transaction id. */
 				return sprintf( __( 'Bitsnap payment received (%1$s, transaction %2$s).', 'bitsnap-for-woocommerce' ), $gateway, $payment );
 			case 'offline_paid':
-					$order->update_meta_data( Meta::PAID_ORDER_ID, (string) $api_order['id'] );
 				/* translators: 1: payment method, 2: transaction id. */
 				return sprintf( __( 'Bitsnap confirmed the payment (%1$s, transaction %2$s).', 'bitsnap-for-woocommerce' ), $gateway, $payment );
 			case 'payment_failed':

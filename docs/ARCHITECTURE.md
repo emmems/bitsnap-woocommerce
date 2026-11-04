@@ -30,7 +30,7 @@ The Bitsnap order is a payment record. It carries `source = woocommerce`, so Bit
 | `src/Webhook/Registrar.php` | Creates and deletes the plugin's webhook in Bitsnap, and remembers its id (`Store`, `SettingsStore`) |
 | `src/Woo/` | Code that needs WooCommerce: `Gateway`, `OrderReader`, `OrderUpdater`, `PaymentStarter`, `OrderSync`, `ReturnPage`, `Reconciler`, `Refunder` |
 | `src/Mapping/`, `src/Webhook/{Signature,Event,EventPlanner,Registrar}`, `src/OAuth/{Protocol,Service}`, `src/Support/{Money,Redactor,Secrets,IdempotencyKey}`, `src/Api/ErrorMapper` | **Pure** classes with no WordPress calls, covered by unit tests |
-| `src/Api/Client.php` | Thin `wp_remote_post` wrapper for Connect JSON. With OAuth it asks its `TokenSource` for the token and repeats a call once after a 401 |
+| `src/Api/Client.php` | Validated WordPress HTTP wrapper for Connect JSON. With OAuth it asks its `TokenSource` for the token and repeats a call once after a 401 |
 | `src/Webhook/Handler.php` | The `wc-api=bitsnap` endpoint |
 | `src/Blocks/PaymentMethod.php`, `assets/js/blocks/index.js` | Cart and Checkout Blocks integration |
 
@@ -59,11 +59,11 @@ The flow, all through `OAuth\Service`, which does not call WordPress:
 4. **Token.** `POST {base}/oauth/token` (form) with the code, verifier, redirect URI, client id and `resource`. The answer must carry `bitsnap_project_id`, `bitsnap_project_name` and `bitsnap_environment`. **Tokens are stored for `bitsnap_environment`**, the environment the server issued them for, even if the merchant changed it on the consent page.
 5. **Webhook.** Right after connecting, `Webhook\Registrar::register(..., replace: true)` deletes this site's earlier webhook of that environment by id and creates a new one, so the stored secret always matches the webhook that exists. A failure here leaves the connection in place and shows a warning.
 
-Tokens are stored encrypted (`Support\Secrets`, libsodium) in the gateway option, like manual keys. The project id and name, expiry and client id are plain. A token pair is written with a single `update_option`, so a rotated pair is never half saved.
+Tokens are stored encrypted (`Support\Secrets`, libsodium) in a separate non-autoloaded option per environment (`bitsnap_oauth_tokens_test|live`). The settings adapter overlays these values for existing readers and migrates legacy token fields on their next write. Gateway form saves cannot overwrite token options. The project id and name, expiry and client id are plain. A token pair is written with a single `update_option`, so a rotated pair is never half saved.
 
 **Refreshing.** `Api\Client` asks its `TokenSource` (`OAuth\ApiTokens`) for a token before each call. The token is refreshed when it expires within 60 seconds. When the API answers 401, the client refreshes and repeats the call **once**, with or without an idempotency key, because a rejected request changed nothing. Only a call with an idempotency key is repeated after a network error or 5xx.
 
-Rotating refresh tokens make parallel refreshes dangerous: the second request would use a token that is already spent. `Service::refresh()` therefore takes a transient lock (`bitsnap_oauth_refresh_<env>`, 30 s). The request that gets the lock re-reads the tokens **from the database** (`Settings::reload()` drops this request's cached copy) and refreshes only if they are still the stale ones. A request that loses the lock waits up to five seconds, re-reads the stored tokens, and uses the winner's. It never uses the refresh token itself. If the lock never clears the call fails with `busy` and the refresh token stays unused.
+Rotating refresh tokens make parallel refreshes dangerous: the second request would use a token that is already spent. `Service::refresh()` therefore takes a database lease (180 seconds, atomic `add_option`, with a random owner and compare-and-delete for expiry and release) shared with all token writers of that environment. The request that gets the lock re-reads the tokens **from the database** (`Settings::reload()` drops this request's cached copy) and refreshes only if they are still the stale ones. A request that loses the lock waits up to five seconds, re-reads the stored tokens, and uses the winner's. It never uses the refresh token itself. If the lock never clears the call fails with `busy` and the refresh token stays unused.
 
 Failures:
 
@@ -161,7 +161,7 @@ Response codes:
 
 ## Order meta
 
-All keys are read and written through `WC_Order` meta methods, so the plugin works with HPOS. Keys start with `_bitsnap_`: `order_id`, `environment`, `attempt`, `request_fingerprint`, `expires_at`, `events`, `refund_ids`, `offline`, `payment_gateway`, `return_checked`, `reconciled_at`, `gave_up`.
+All keys are read and written through `WC_Order` meta methods, so the plugin works with HPOS. Keys start with `_bitsnap_`: `order_id`, `paid_order_id`, `environment`, `attempt`, `request_fingerprint`, `expires_at`, `events`, `refund_ids`, `offline`, `payment_gateway`, `return_checked`, `reconciled_at`, `gave_up`.
 
 ## Filters
 
@@ -173,10 +173,16 @@ All keys are read and written through `WC_Order` meta methods, so the plugin wor
 | `bitsnap_wc_checkout_request` | Change the final request (the total must still add up) |
 | `bitsnap_wc_item_vat_rate` | Change the VAT rate sent for an item |
 
-## Known limits
+## Concurrency and known limits
 
-- Two concurrent deliveries of the same event are not locked against each other. Every action checks the order state first, so the outcome is the same, but a refund event delivered twice at the same instant could in theory record the refund twice.
-- Without a persistent object cache the refresh lock is a transient in the options table, so two requests can in theory both take it. The request that wins the lock re-reads the tokens from the database before it refreshes, which closes the common case, but a rotated token spent twice would end in `invalid_grant` and a reconnect.
+- Webhooks, reconciliation, return-page transitions and refund submissions share a per-order database lease. State is reloaded after acquisition. Contending webhooks return 500 and retries recheck event and refund identity. Remote refund identity is persisted on the WooCommerce refund before the event is acknowledged.
+- Locks use the options table even with an external cache. Token pairs are read from one snapshot; refresh, disconnect and token writes share an environment lock. An invalid_grant clears tokens only if the freshly read refresh token still matches the rejected one.
 - If Bitsnap forgets the client registration, the merchant sees an error on the Bitsnap consent page, where the plugin cannot catch it. Re-registration happens when the token endpoint reports `invalid_client`. A fix by hand: change the API base URL and back, or disconnect and connect.
 - Only two-decimal currencies are supported.
-- `process_refund()` finds the WooCommerce refund it is processing as the newest refund of the order. WooCommerce creates that record before it calls the gateway, and does not pass its id.
+- The refund creation hook captures the exact WooCommerce refund ID in the current request. Before the remote call an order-level pending association stores that ID and the request. If the request is interrupted, webhook processing replays its idempotency key to resolve the identity before recording a refund. Ambiguous remote failures retain this association.
+
+API destinations require public HTTPS and are checked again at each transport call. Only local/development environments with `BITSNAP_WC_ALLOW_INSECURE_API` explicitly enabled may use localhost, 127.0.0.1 or *.test over HTTP. Redirects are disabled. Debug logs use operational allowlists, excluding response bodies, buyer fields and payment URLs.
+
+Reconciliation advances a persistent page cursor across batches of 20 pending candidates, so continuously pending recent orders cannot monopolize every run. CI builds the Blocks script and runs the smoke suite in both HPOS modes; `bin/review-checks.sh` reproduces the Docker PHP matrix and smoke checks.
+
+The latest checkout attempt remains in `order_id`. When an older attempt pays the exact current total, the order is paid with a note and `paid_order_id` retains the actual paying attempt for subsequent refunds. Failure and expiry from older attempts do not change status. Payments with a mismatched amount or currency are held for review.

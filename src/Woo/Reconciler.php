@@ -114,17 +114,20 @@ final class Reconciler {
 	public function run(): void {
 		$now = time();
 
+		$page   = max( 1, (int) get_option( 'bitsnap_reconcile_page', 1 ) );
 		$orders = wc_get_orders(
 			array(
 				'status'         => array( 'pending' ),
 				'payment_method' => 'bitsnap',
-				'limit'          => self::SCAN,
+				'limit'          => self::BATCH,
+				'page'           => $page,
 				'orderby'        => 'date',
 				'order'          => 'DESC',
 				'date_created'   => ( $now - self::MAX_AGE ) . '...' . ( $now - self::MIN_AGE ),
 			)
 		);
 
+		update_option( 'bitsnap_reconcile_page', count( $orders ) < self::BATCH ? 1 : $page + 1, false );
 		$checked = 0;
 		foreach ( $orders as $order ) {
 			if ( $checked >= self::BATCH ) {
