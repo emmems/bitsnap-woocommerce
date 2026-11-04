@@ -43,6 +43,9 @@ final class Reconciler {
 	 */
 	public const MAX_AGE = 172800;
 
+	/** Offline payments can legitimately take several weeks. */
+	public const OFFLINE_MAX_AGE = 2592000;
+
 	/**
 	 * Order sync.
 	 *
@@ -117,13 +120,13 @@ final class Reconciler {
 		$page   = max( 1, (int) get_option( 'bitsnap_reconcile_page', 1 ) );
 		$orders = wc_get_orders(
 			array(
-				'status'         => array( 'pending' ),
+				'status'         => array( 'pending', 'on-hold', 'processing' ),
 				'payment_method' => Gateway::IDS,
 				'limit'          => self::BATCH,
 				'page'           => $page,
 				'orderby'        => 'date ID',
 				'order'          => 'DESC',
-				'date_created'   => ( $now - self::MAX_AGE ) . '...' . ( $now - self::MIN_AGE ),
+				'date_created'   => ( $now - self::OFFLINE_MAX_AGE ) . '...' . ( $now - self::MIN_AGE ),
 			)
 		);
 
@@ -136,6 +139,12 @@ final class Reconciler {
 			if ( ! $order instanceof \WC_Order || '' === (string) $order->get_meta( Meta::ORDER_ID ) ) {
 				continue;
 			}
+			$offline = '' !== (string) $order->get_meta( Meta::OFFLINE );
+			$max_age = $offline ? self::OFFLINE_MAX_AGE : self::MAX_AGE;
+			if ( ( ! $offline && ! $order->has_status( 'pending' ) ) || '' !== (string) $order->get_meta( Meta::GAVE_UP ) || $order->get_date_created()->getTimestamp() < $now - $max_age ) {
+				continue;
+			}
+
 			if ( (int) $order->get_meta( Meta::RECONCILED_AT ) > $now - ( self::MIN_AGE - 60 ) ) {
 				continue;
 			}
@@ -151,33 +160,35 @@ final class Reconciler {
 	/**
 	 * Marks orders pending for more than 48 hours so they are not checked again.
 	 *
-	 * Newest first, so an order that just crossed 48 hours is always among the first rows.
+	 * Paginate all candidates so already marked rows cannot hide older orders.
 	 *
 	 * @param int $now Current Unix time.
 	 * @return void
 	 */
 	private function give_up( int $now ): void {
+		$page = max( 1, (int) get_option( 'bitsnap_give_up_page', 1 ) );
 		$old  = wc_get_orders(
 			array(
-				'status'         => array( 'pending' ),
+				'status'         => array( 'pending', 'on-hold', 'processing' ),
 				'payment_method' => Gateway::IDS,
 				'limit'          => self::SCAN,
+				'page'           => $page,
 				'orderby'        => 'date ID',
 				'order'          => 'DESC',
 				'date_created'   => '<' . ( $now - self::MAX_AGE ),
 			)
 		);
-		$done = 0;
+		update_option( 'bitsnap_give_up_page', count( $old ) < self::SCAN ? 1 : $page + 1, false );
 		foreach ( $old as $order ) {
-			if ( $done >= self::BATCH ) {
-				break;
-			}
 			if ( ! $order instanceof \WC_Order || '' === (string) $order->get_meta( Meta::ORDER_ID ) || '' !== (string) $order->get_meta( Meta::GAVE_UP ) ) {
 				continue;
 			}
-			++$done;
+			$offline = '' !== (string) $order->get_meta( Meta::OFFLINE );
+			if ( ( ! $offline && ! $order->has_status( 'pending' ) ) || ( $offline && $order->get_date_created()->getTimestamp() >= $now - self::OFFLINE_MAX_AGE ) ) {
+				continue;
+			}
 			$order->update_meta_data( Meta::GAVE_UP, $now );
-			$order->add_order_note( __( 'Bitsnap: this order is still unpaid after 48 hours. The plugin stopped checking it automatically.', 'bitsnap-for-woocommerce' ) );
+			$order->add_order_note( $offline ? __( 'Bitsnap: this offline payment is still unpaid after 30 days. The plugin stopped checking it automatically.', 'bitsnap-for-woocommerce' ) : __( 'Bitsnap: this order is still unpaid after 48 hours. The plugin stopped checking it automatically.', 'bitsnap-for-woocommerce' ) );
 			$order->save();
 			$this->logger->info( 'Gave up on order ' . $order->get_id() . ' after 48 hours.' );
 		}
