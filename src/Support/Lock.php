@@ -42,30 +42,23 @@ final class Lock {
 			throw new \RuntimeException( 'Bitsnap operation is already running.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 		}
 		$this->value = ( time() + $ttl ) . ':' . bin2hex( random_bytes( 16 ) );
-		if ( add_option( $this->key, $this->value, '', false ) ) {
+		// Use the unique option_name index as the arbiter, even with an external cache.
+		$wpdb->query( $wpdb->prepare( "INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'off')", $this->key, $this->value ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$acquired = 1 === $wpdb->rows_affected;
+		if ( ! $acquired ) {
+			$old = $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", $this->key ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			if ( is_string( $old ) && (int) $old < time() ) {
+				$wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND option_value = %s", $this->value, $this->key, $old ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+				$acquired = 1 === $wpdb->rows_affected;
+			}
+		}
+		$this->clear_cache();
+		if ( $acquired ) {
 			self::$owned[ $this->key ] = array(
 				'value' => $this->value,
 				'count' => 1,
 			);
 			return;
-		}
-		$old = $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", $this->key ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-		if ( is_string( $old ) && (int) $old < time() ) {
-			$wpdb->delete(
-				$wpdb->options,
-				array(
-					'option_name'  => $this->key,
-					'option_value' => $old,
-				)
-			); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-			wp_cache_delete( $this->key, 'options' );
-			if ( add_option( $this->key, $this->value, '', false ) ) {
-				self::$owned[ $this->key ] = array(
-					'value' => $this->value,
-					'count' => 1,
-				);
-				return;
-			}
 		}
 		throw new \RuntimeException( 'Bitsnap operation is busy; retry shortly.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 	}
@@ -83,7 +76,9 @@ final class Lock {
 	/** Releases only this owner's lease. */
 	public function release(): void {
 		global $wpdb;
-		unset( self::$owned[ $this->key ] );
+		if ( ( self::$owned[ $this->key ]['value'] ?? '' ) === $this->value ) {
+			unset( self::$owned[ $this->key ] );
+		}
 		$wpdb->delete(
 			$wpdb->options,
 			array(
@@ -91,6 +86,13 @@ final class Lock {
 				'option_value' => $this->value,
 			)
 		); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$this->clear_cache();
+	}
+
+	/** Clears option snapshots after direct SQL, including negative lookups. */
+	private function clear_cache(): void {
 		wp_cache_delete( $this->key, 'options' );
+		wp_cache_delete( 'notoptions', 'options' );
+		wp_cache_delete( 'alloptions', 'options' );
 	}
 }
