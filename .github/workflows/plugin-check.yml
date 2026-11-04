@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   plugin-check:
-    name: WordPress.org Plugin Check
+    name: Plugin Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,14 +29,28 @@ jobs:
           npm ci
           npm run build
 
-      # Check what would be released: the same files, with the same exclusions.
+      - name: Compile translations
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq gettext
+          bash bin/build-mo.sh
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: composer
+          coverage: none
+
+      # Check what would be released: the same files, built by the same script as the release zip.
       - name: Assemble the release files
         run: |
-          mkdir -p dist/bitsnap-for-woocommerce
-          rsync -a --exclude-from=.distignore ./ dist/bitsnap-for-woocommerce/ --exclude=dist
+          bash bin/build-zip.sh dist
+          unzip -q dist/bitsnap-for-woocommerce.zip -d dist/unpacked
 
       - name: Run Plugin Check
         uses: wordpress/plugin-check-action@v1
         with:
-          build-dir: dist/bitsnap-for-woocommerce
+          build-dir: dist/unpacked/bitsnap-for-woocommerce
+          # The plugin updates itself from GitHub releases (it is not listed on WordPress.org), so this check is expected to flag it.
+          exclude-checks: |
+            plugin_updater
           wp-version: latest

@@ -1,7 +1,10 @@
 name: Release
 
-# A tag such as v0.2.0 (or 0.2.0) publishes to WordPress.org and attaches a zip to the GitHub release.
-# Run it by hand with "dry run" on to check the whole flow without publishing.
+# Pushing a tag such as v0.2.0 (or 0.2.0) builds the plugin zip and publishes a GitHub release with ONE asset,
+# `bitsnap-for-woocommerce.zip` (no version in the name). That makes this address always the newest build:
+#   https://github.com/emmems/bitsnap-woocommerce/releases/latest/download/bitsnap-for-woocommerce.zip
+# Sites running the plugin find new releases from wp-admin (Plugin Update Checker reads the same release).
+# Run the workflow by hand to build the zip and keep it as a workflow artifact, without publishing anything.
 
 on:
   push:
@@ -9,11 +12,6 @@ on:
       - 'v*'
       - '[0-9]+.[0-9]+.[0-9]+*'
   workflow_dispatch:
-    inputs:
-      dry-run:
-        description: 'Dry run: build and check, but do not commit to WordPress.org SVN'
-        type: boolean
-        default: true
 
 permissions:
   contents: write
@@ -59,29 +57,74 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq gettext
           bash bin/build-mo.sh
 
-      - name: Deploy to WordPress.org
-        id: deploy
-        uses: 10up/action-wordpress-plugin-deploy@54bd289b8525fd23a5c365ec369185f2966529c2 # stable
+      - uses: shivammathur/setup-php@v2
         with:
-          generate-zip: true
-          # A tag publishes; a manual run publishes only when dry run is off.
-          dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run == true }}
+          php-version: '8.3'
+          tools: composer
+          coverage: none
+
+      # rsync with .distignore, then `composer install --no-dev --optimize-autoloader`, then zip.
+      - name: Build the zip
+        run: bash bin/build-zip.sh dist
+
+      - name: Check the zip
         env:
-          SVN_USERNAME: ${{ secrets.SVN_USERNAME }}
-          SVN_PASSWORD: ${{ secrets.SVN_PASSWORD }}
-          SLUG: bitsnap-for-woocommerce
           VERSION: ${{ steps.version.outputs.version }}
-          ASSETS_DIR: .wordpress-org
+        run: |
+          zip=dist/bitsnap-for-woocommerce.zip
+          unzip -Z1 "$zip" > dist/files.txt
+          if grep -v '^bitsnap-for-woocommerce/' dist/files.txt | grep -q .; then
+            echo "::error::Everything in the zip must sit in the folder bitsnap-for-woocommerce/."
+            exit 1
+          fi
+          for required in \
+            bitsnap-for-woocommerce/bitsnap-for-woocommerce.php \
+            bitsnap-for-woocommerce/readme.txt \
+            bitsnap-for-woocommerce/build/blocks.js \
+            bitsnap-for-woocommerce/languages/bitsnap-for-woocommerce-pl_PL.mo \
+            bitsnap-for-woocommerce/vendor/autoload.php \
+            bitsnap-for-woocommerce/vendor/yahnis-elsts/plugin-update-checker/plugin-update-checker.php
+          do
+            grep -qx "$required" dist/files.txt || { echo "::error::$required is missing from the zip."; exit 1; }
+          done
+          if grep -E '^bitsnap-for-woocommerce/(tests|node_modules|\.github|\.wordpress-org|bin|docs)/|/(phpunit|phpcs)(/|$)|/composer\.(json|lock)$' dist/files.txt | grep -v '/vendor/yahnis-elsts/' | grep -q .; then
+            echo "::error::The zip contains development files."
+            exit 1
+          fi
+          unzip -p "$zip" bitsnap-for-woocommerce/bitsnap-for-woocommerce.php | grep -q "Version: *${VERSION}$" \
+            || { echo "::error::The plugin header in the zip is not version ${VERSION}."; exit 1; }
+          echo "OK: $(wc -l < dist/files.txt) entries, $(du -h "$zip" | cut -f1)"
+          rm dist/files.txt
+
+      # The notes are the changelog section of readme.txt for this version.
+      - name: Write release notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          awk -v v="= ${VERSION} =" '
+            $0 == v { found = 1; next }
+            found && /^= / { exit }
+            found && /^== / { exit }
+            found { print }
+          ' readme.txt | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' > dist/release-notes.md
+          {
+            echo
+            echo "Install: download \`bitsnap-for-woocommerce.zip\` below and upload it in wp-admin under Plugins > Add New > Upload Plugin. Sites that already run the plugin get this update in wp-admin."
+          } >> dist/release-notes.md
+          cat dist/release-notes.md
 
       - name: Keep the zip as a workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: bitsnap-for-woocommerce-${{ steps.version.outputs.version }}
-          path: ${{ steps.deploy.outputs.zip-path }}
+          path: dist/bitsnap-for-woocommerce.zip
 
-      - name: Attach the zip to the GitHub release
+      # softprops/action-gh-release v2.6.2
+      - name: Publish the GitHub release
         if: github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
-          files: ${{ steps.deploy.outputs.zip-path }}
-          generate_release_notes: true
+          files: dist/bitsnap-for-woocommerce.zip
+          body_path: dist/release-notes.md
+          generate_release_notes: false
+          fail_on_unmatched_files: true
