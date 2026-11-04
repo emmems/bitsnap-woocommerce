@@ -1,5 +1,5 @@
 === Bitsnap for WooCommerce ===
-Contributors: bitsnap
+Contributors: emmems
 Tags: woocommerce, payments, blik, payment gateway, przelewy24
 Requires at least: 6.5
 Tested up to: 7.1
