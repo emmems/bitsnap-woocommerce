@@ -397,6 +397,9 @@ $GLOBALS['bitsnap_mock']['CreateCheckoutSession'] = array( 200, array( 'url' => 
 // ---------------------------------------------------------------- webhooks
 
 function smoke_event( $order, $type, $id, $state, $gateway_name = 'blik', $extra = array(), $meta_override = array(), $payment_id = 'pay_1' ) {
+	if ( isset( $extra['refund'] ) && ! isset( $extra['refund']['orderId'] ) ) {
+		$extra['refund']['orderId'] = (string) $order->get_meta( Meta::PAID_ORDER_ID );
+	}
 	return wp_json_encode(
 		array(
 			'projectId' => 'proj_1',
@@ -439,6 +442,37 @@ function smoke_concurrent_delivery( $body ) {
 	return smoke_other_request( '$body=base64_decode(' . var_export( base64_encode( $body ), true ) . '); echo json_encode(\Bitsnap\WooCommerce\Plugin::instance()->handler()->process("POST",$body,hash_hmac("sha512",$body,"whsec_SMOKESECRET")));' );
 }
 
+
+smoke_section( 'Atomic database lock races' );
+// Both independently bootstrapped PHP processes wait at a barrier before acquiring.
+foreach ( array( false, true ) as $expired_lock ) {
+	$name = 'smoke-race-' . wp_generate_uuid4();
+	$key = 'bitsnap_lock_' . hash( 'sha256', $name );
+	if ( $expired_lock ) { add_option( $key, '1:expired-owner', '', false ); }
+	$barrier = sys_get_temp_dir() . '/bitsnap-race-' . wp_generate_uuid4();
+	$children = array();
+	for ( $i = 0; $i < 2; ++$i ) {
+		$ready = $barrier . '.' . $i;
+		$code = 'file_put_contents(' . var_export( $ready, true ) . ', "ready"); while (!file_exists(' . var_export( $barrier, true ) . ')) {usleep(1000);} try {$lock=new \Bitsnap\WooCommerce\Support\Lock(' . var_export( $name, true ) . '); echo "won"; usleep(1000000); $lock->release();} catch (\RuntimeException $e) {echo "lost";}';
+		$pipes = array();
+		$proc = proc_open( array( 'wp', 'eval', $code ), array( 1 => array( 'pipe', 'w' ), 2 => array( 'pipe', 'w' ) ), $pipes );
+		$children[] = array( $proc, $pipes );
+	}
+	$deadline = microtime( true ) + 30;
+	while ( ( ! file_exists( $barrier . '.0' ) || ! file_exists( $barrier . '.1' ) ) && microtime( true ) < $deadline ) { usleep( 10000 ); }
+	file_put_contents( $barrier, 'go' );
+	$outcomes = array();
+	foreach ( $children as $child ) {
+		$outcomes[] = trim( stream_get_contents( $child[1][1] ) );
+		$error = stream_get_contents( $child[1][2] );
+		fclose( $child[1][1] ); fclose( $child[1][2] );
+		smoke_check( 0 === proc_close( $child[0] ), 'lock contender PHP exits cleanly', $error );
+	}
+	sort( $outcomes );
+	smoke_check( array( 'lost', 'won' ) === $outcomes, $expired_lock ? 'exactly one expired-lock takeover wins' : 'exactly one absent-lock insert wins', wp_json_encode( $outcomes ) );
+	unlink( $barrier ); unlink( $barrier . '.0' ); unlink( $barrier . '.1' );
+}
+
 smoke_section( 'Webhooks' );
 $handler = $plugin->handler();
 $body    = smoke_event( $order, 'TRANSACTION_SUCCESS', 'evt_1', 'PAYMENT_STATE_PAID' );
@@ -464,6 +498,36 @@ smoke_check( array( 404, 'unknown_order' ) === smoke_deliver( $ghost_body ), 'an
 smoke_check( array( 400, 'invalid_payload' ) === smoke_deliver( '{"not":"an event"}' ), 'a signed body that is not an event gets 400' );
 // A live-signed event cannot touch a test order.
 smoke_check( array( 404, 'unknown_order' ) === smoke_deliver( smoke_event( $order, 'TRANSACTION_SUCCESS', 'evt_7', 'PAYMENT_STATE_PAID' ), 'whsec_SMOKELIVESECRET' ), 'a live-signed event cannot touch a test-mode order' );
+
+
+smoke_section( 'Terminal checkout retry' );
+$original_session_mock = $GLOBALS['bitsnap_mock']['CreateCheckoutSession'];
+foreach ( array( 'FAILED', 'EXPIRED' ) as $terminal ) {
+	$retry_order = smoke_order( $product );
+	$GLOBALS['bitsnap_mock']['CreateCheckoutSession'] = static function ( $request, $headers ) {
+		$key = $headers['Idempotency-Key'];
+		return array( 200, array( 'url' => 'https://bitsnap.pl/pay/' . $key, 'orderId' => 'session_' . $key, 'environment' => 'ENVIRONMENT_TEST', 'expiresAt' => 0 ) );
+	};
+	$gateway->process_payment( $retry_order->get_id() );
+	$retry_order = \Bitsnap\WooCommerce\Woo\OrderState::reload( $retry_order->get_id() );
+	$first_id = $retry_order->get_meta( Meta::ORDER_ID );
+	$first_key = smoke_last_request( 'CreateCheckoutSession' )['headers']['Idempotency-Key'];
+	smoke_deliver( smoke_event( $retry_order, 'TRANSACTION_' . ( 'FAILED' === $terminal ? 'FAILURE' : 'EXPIRED' ), 'evt_terminal_' . $terminal, $terminal ) );
+	// Simulate transport ambiguity on the first retry; the next call must reuse attempt 2.
+	$session_mock = $GLOBALS['bitsnap_mock']['CreateCheckoutSession'];
+	$GLOBALS['bitsnap_mock']['CreateCheckoutSession'] = array( 503, array( 'code' => 'unavailable' ) );
+	$gateway->process_payment( $retry_order->get_id() );
+	$transport_key = smoke_last_request( 'CreateCheckoutSession' )['headers']['Idempotency-Key'];
+	smoke_deliver( smoke_event( $retry_order, 'TRANSACTION_' . ( 'FAILED' === $terminal ? 'FAILURE' : 'EXPIRED' ), 'evt_terminal_late_' . $terminal, $terminal ) );
+	$GLOBALS['bitsnap_mock']['CreateCheckoutSession'] = $session_mock;
+	$retry_result = $gateway->process_payment( $retry_order->get_id() );
+	$retry_order = \Bitsnap\WooCommerce\Woo\OrderState::reload( $retry_order->get_id() );
+	smoke_check( 'success' === $retry_result['result'] && 2 === (int) $retry_order->get_meta( Meta::ATTEMPT ) && $first_id !== $retry_order->get_meta( Meta::ORDER_ID ) && $first_key !== $transport_key, $terminal . ' retry creates a new attempt and session' );
+	smoke_check( $transport_key === smoke_last_request( 'CreateCheckoutSession' )['headers']['Idempotency-Key'], 'ambiguous transport retry keeps the same new attempt key' );
+	$gateway->process_payment( $retry_order->get_id() );
+	smoke_check( $transport_key === smoke_last_request( 'CreateCheckoutSession' )['headers']['Idempotency-Key'], 'zero expiry remains unknown, not expired' );
+}
+$GLOBALS['bitsnap_mock']['CreateCheckoutSession'] = $original_session_mock;
 
 // Failure and expiry on fresh orders.
 $fo = smoke_order( $product );
@@ -596,6 +660,20 @@ $stale_event['eventData']['id'] = 'evt_stale_paid';
 $stale_event['eventData']['order']['amountPaid']['amount'] = (int) round( $stale->get_total() * 100 );
 smoke_deliver( wp_json_encode( $stale_event ) );
 smoke_check( wc_get_order( $stale->get_id() )->is_paid() && 'old_attempt' === wc_get_order( $stale->get_id() )->get_meta( Meta::PAID_ORDER_ID ), 'an older attempt paying the full total is accepted and retained for refunds' );
+
+$stale_event['eventData']['id'] = 'evt_stale_mismatch_after_paid';
+$stale_event['eventData']['order']['amountPaid']['amount'] = 1;
+smoke_deliver( wp_json_encode( $stale_event ) );
+$settled = \Bitsnap\WooCommerce\Woo\OrderState::reload( $stale->get_id() );
+smoke_check( $settled->is_paid() && 'yes' === $settled->get_meta( Meta::REVIEW ), 'late mismatched old success leaves a paid order settled and flags manual review' );
+$settled->update_status( 'completed' );
+$stale_event['eventData']['id'] = 'evt_stale_mismatch_after_completed';
+smoke_deliver( wp_json_encode( $stale_event ) );
+smoke_check( 'completed' === wc_get_order( $stale->get_id() )->get_status(), 'late mismatched success cannot demote a completed order' );
+$wrong_refund = smoke_event( $settled, 'REFUND_SUCCEEDED', 'evt_other_attempt_refund', 'PARTIALLY_REFUNDED', 'blik', array( 'refund' => array( 'id' => 'rf_wrong', 'orderId' => 'new_attempt', 'amount' => array( 'amount' => 100, 'currency' => 'PLN' ) ) ) );
+smoke_deliver( $wrong_refund );
+smoke_check( 0 === count( wc_get_order( $settled->get_id() )->get_refunds() ), 'refund from an attempt that did not pay is ignored' );
+
 $race = smoke_order( $product );
 $race->update_meta_data( Meta::ORDER_ID, 'race_attempt' );
 $race->update_meta_data( Meta::ENVIRONMENT, 'test' );
@@ -650,6 +728,13 @@ $dash = smoke_event( $order, 'REFUND_SUCCEEDED', 'evt_r2', 'PAYMENT_STATE_PARTIA
 smoke_deliver( $dash );
 $order = wc_get_order( $order->get_id() );
 smoke_check( $before + 1 === count( $order->get_refunds() ) && 15.0 === (float) $order->get_total_refunded(), 'a refund made in the Bitsnap dashboard appears in WooCommerce (total refunded ' . $order->get_total_refunded() . ')' );
+
+foreach ( $order->get_refunds() as $deleted_refund ) {
+	if ( 'ref_dash' === $deleted_refund->get_meta( '_bitsnap_refund_id' ) ) { $deleted_refund->delete( true ); }
+}
+smoke_check( array( 200, 'ok' ) === smoke_deliver( $dash ), 'same refund event is replayable after its Woo record was deleted' );
+smoke_check( $before + 1 === count( wc_get_order( $order->get_id() )->get_refunds() ), 'deleted Woo refund is re-created despite remembered remote and event IDs' );
+smoke_check( array( 200, 'duplicate' ) === smoke_deliver( $dash ), 're-created refund is deduplicated again' );
 $identity_order = wc_get_order( $order->get_id() );
 $identity_order->delete_meta_data( Meta::REFUND_IDS );
 $identity_order->save();
@@ -746,7 +831,9 @@ $rc = smoke_order( $product );
 $rc->set_payment_method( 'bitsnap_manual' );
 $rc->update_meta_data( Meta::ORDER_ID, 'ord_rc' );
 $rc->update_meta_data( Meta::ENVIRONMENT, 'test' );
-$rc->set_date_created( time() - 1800 );
+$rc->set_status( 'on-hold' );
+$rc->update_meta_data( Meta::OFFLINE, 'manual' );
+$rc->set_date_created( time() - 5 * DAY_IN_SECONDS );
 $rc->save();
 $fresh = smoke_order( $product ); // Pending for seconds: must not be polled.
 $fresh->update_meta_data( Meta::ORDER_ID, 'ord_fresh' );
@@ -758,7 +845,7 @@ $old->update_meta_data( Meta::ENVIRONMENT, 'test' );
 $old->set_date_created( time() - 3 * DAY_IN_SECONDS );
 $old->save();
 $plugin->reconciler()->run();
-smoke_check( wc_get_order( $rc->get_id() )->is_paid(), 'the reconcile job completes an order pending for 30 minutes' );
+smoke_check( wc_get_order( $rc->get_id() )->is_paid(), 'the reconcile job completes an on-hold manual order older than 48 hours' );
 smoke_check( 'pending' === wc_get_order( $fresh->get_id() )->get_status(), 'the reconcile job leaves a fresh order alone' );
 smoke_check( 'pending' === wc_get_order( $old->get_id() )->get_status() && '' !== (string) wc_get_order( $old->get_id() )->get_meta( Meta::GAVE_UP ), 'the reconcile job gives up on an order older than 48 hours' );
 smoke_check( false !== as_next_scheduled_action( Reconciler::HOOK, array(), Reconciler::GROUP ), 'the recurring Action Scheduler action is scheduled' );
@@ -784,6 +871,23 @@ $checked_ids = array_filter( $batch_ids, static function ( $id ) { return (int) 
 smoke_check( 45 === count( $checked_ids ), 'all 45 persistent pending orders are checked across batches' );
 smoke_check( wc_get_order( $GLOBALS['bitsnap_batch_paid_id'] )->is_paid(), 'persistent newer pending orders cannot starve an older paid order' );
 unset( $GLOBALS['bitsnap_batch_paid_id'] );
+
+
+smoke_section( 'Give-up pagination' );
+delete_option( 'bitsnap_give_up_page' );
+$expired_ids = array();
+for ( $i = 0; $i < 105; ++$i ) {
+	$expired = smoke_order( $product );
+	$expired->update_meta_data( Meta::ORDER_ID, 'expired_' . $i );
+	$expired->update_meta_data( Meta::ENVIRONMENT, 'test' );
+	$expired->set_date_created( time() - 4 * DAY_IN_SECONDS - $i );
+	if ( $i < 100 ) { $expired->update_meta_data( Meta::GAVE_UP, time() ); }
+	$expired->save();
+	$expired_ids[] = $expired->get_id();
+}
+$plugin->reconciler()->run();
+$plugin->reconciler()->run();
+smoke_check( '' !== (string) wc_get_order( end( $expired_ids ) )->get_meta( Meta::GAVE_UP ), 'already marked newest 100 expired orders cannot starve older give-up candidates' );
 
 // ---------------------------------------------------------------- blocks
 
