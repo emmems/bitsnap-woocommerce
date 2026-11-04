@@ -43,15 +43,36 @@ final class OrderUpdater {
 	 */
 	public function context( \WC_Order $order ): array {
 		return array(
-			'attempt_id'       => (string) $order->get_meta( Meta::ORDER_ID ),
+			'paid_attempt_id'  => (string) $order->get_meta( Meta::PAID_ORDER_ID ),
+			'attempt_id'       => 'STARTING' === $order->get_meta( Meta::PAYMENT_STATE ) ? '' : (string) $order->get_meta( Meta::ORDER_ID ),
 			'total_minor'      => Money::to_minor( (float) $order->get_total() ),
 			'currency'         => $order->get_currency(),
 			'status'           => $order->get_status(),
 			'is_paid'          => $order->is_paid(),
 			'awaiting_offline' => '' !== (string) $order->get_meta( Meta::OFFLINE ),
-			'known_refund_ids' => $this->list_meta( $order, Meta::REFUND_IDS ),
+			'known_refund_ids' => $this->existing_refund_ids( $order ),
 			'invoice_url'      => (string) $order->get_meta( Meta::INVOICE_URL ),
 		);
+	}
+
+	/**
+	 * Reads identities from refunds that still exist, rather than historical order meta.
+	 *
+	 * @param \WC_Order $order Order.
+	 * @return string[]
+	 */
+	public function existing_refund_ids( \WC_Order $order ): array {
+		$ids = array();
+		foreach ( $order->get_refunds() as $refund ) {
+			$existing = wc_get_order( $refund->get_id() );
+			if ( $existing instanceof \WC_Order_Refund && $existing->get_parent_id() === $order->get_id() ) {
+				$id = (string) $existing->get_meta( '_bitsnap_refund_id' );
+				if ( '' !== $id ) {
+					$ids[] = $id;
+				}
+			}
+		}
+		return $ids;
 	}
 
 	/**
@@ -64,6 +85,10 @@ final class OrderUpdater {
 	 * @return void
 	 */
 	public function apply( \WC_Order $order, array $actions, array $api_order, string $source ): void {
+		if ( 'STARTING' !== $order->get_meta( Meta::PAYMENT_STATE ) && ( $api_order['id'] ?? '' ) === (string) $order->get_meta( Meta::ORDER_ID ) && '' !== ( $api_order['payment_state'] ?? '' ) ) {
+			$order->update_meta_data( Meta::PAYMENT_STATE, $api_order['payment_state'] );
+			$order->save();
+		}
 		foreach ( $actions as $action ) {
 			$this->logger->info(
 				'Applying ' . $action['type'] . ' to order ' . $order->get_id(),
@@ -116,6 +141,10 @@ final class OrderUpdater {
 					$this->record_refund( $order, $action );
 					break;
 
+				case 'review':
+					$order->update_meta_data( Meta::REVIEW, 'yes' );
+					$order->save();
+					// Fall through to the private review note.
 				case 'note':
 					$order->add_order_note( $this->note( (string) $action['note'], $api_order, '', (array) ( $action['args'] ?? array() ) ) );
 					break;
@@ -181,18 +210,14 @@ final class OrderUpdater {
 	 * @throws \RuntimeException When a refund cannot be persisted or is still being submitted.
 	 */
 	private function record_refund( \WC_Order $order, array $action ): void {
-		foreach ( $order->get_refunds() as $existing ) {
-			if ( (string) $existing->get_meta( '_bitsnap_refund_id' ) === (string) $action['refund_id'] ) {
-				return;
-			}
+		if ( in_array( (string) $action['refund_id'], $this->existing_refund_ids( $order ), true ) ) {
+			return;
 		}
 		if ( $order->get_meta( '_bitsnap_pending_refund' ) ) {
 			\Bitsnap\WooCommerce\Plugin::instance()->refunder()->settle_pending( $order );
 			// Recovery may have attached this remote refund to the admin's record.
-			foreach ( $order->get_refunds() as $existing ) {
-				if ( (string) $existing->get_meta( '_bitsnap_refund_id' ) === (string) $action['refund_id'] ) {
-					return;
-				}
+			if ( in_array( (string) $action['refund_id'], $this->existing_refund_ids( $order ), true ) ) {
+				return;
 			}
 		}
 		$amount = Money::to_major_string( (int) $action['amount'] );

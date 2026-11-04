@@ -31,6 +31,29 @@ final class EventPlannerTest extends TestCase {
 		}
 	}
 
+	public function test_settled_order_mismatch_only_requests_review(): void {
+		foreach ( array( 'processing', 'completed', 'refunded' ) as $status ) {
+			$context = array_merge( $this->ctx( $status, true ), array( 'attempt_id' => 'new', 'total_minor' => 1000, 'currency' => 'PLN' ) );
+			foreach ( array( array( 'id' => 'old', 'amount_paid' => 10, 'currency' => 'PLN' ), array( 'id' => 'old', 'amount_paid' => 1000, 'currency' => 'EUR' ), array( 'amount_paid' => 1000, 'currency' => 'PLN' ) ) as $order ) {
+				$this->assertSame( array( 'review' ), $this->types( EventPlanner::plan_for_state( 'PAID', $order, $context ) ) );
+			}
+		}
+	}
+
+	public function test_refund_must_match_the_paid_attempt_and_currency(): void {
+		$context = array_merge( $this->ctx( 'processing', true ), array( 'attempt_id' => 'new', 'paid_attempt_id' => 'ord_1', 'currency' => 'PLN' ) );
+		$refund = array( 'id' => 'rf_guard', 'orderId' => 'ord_1', 'amount' => array( 'amount' => 100, 'currency' => 'PLN' ) );
+		$this->assertSame( array( 'refund' ), $this->types( EventPlanner::plan( $this->event( 'REFUND_SUCCEEDED', array(), $refund ), $context ) ) );
+		foreach ( array( 'REFUND_SUCCEEDED', 'REFUND_FAILED' ) as $type ) {
+			$other = $refund;
+			$other['orderId'] = 'new';
+			$this->assertSame( array( 'note' ), $this->types( EventPlanner::plan( $this->event( $type, array(), $other ), $context ) ) );
+			$other = $refund;
+			$other['amount']['currency'] = 'EUR';
+			$this->assertSame( array( 'note' ), $this->types( EventPlanner::plan( $this->event( $type, array(), $other ), $context ) ) );
+		}
+	}
+
 	private function ctx( string $status, bool $paid = false, bool $offline = false, array $refunds = array() ): array {
 		return array(
 			'status'           => $status,

@@ -71,14 +71,15 @@ final class IdempotencyKey {
 	 * @param string $fingerprint          Fingerprint of this call.
 	 * @param int    $previous_expires_at  Unix time the last session expires, 0 if unknown.
 	 * @param int    $now                  Current Unix time.
+	 * @param bool   $terminal             Whether the previous attempt is known to have ended.
 	 * @return int Attempt number to use.
 	 */
-	public static function next_attempt( int $previous_attempt, string $previous_fingerprint, string $fingerprint, int $previous_expires_at, int $now ): int {
+	public static function next_attempt( int $previous_attempt, string $previous_fingerprint, string $fingerprint, int $previous_expires_at, int $now, bool $terminal = false ): int {
 		if ( $previous_attempt < 1 ) {
 			return 1;
 		}
 		$changed = $previous_fingerprint !== $fingerprint;
 		$expired = $previous_expires_at > 0 && $previous_expires_at <= $now;
-		return ( $changed || $expired ) ? $previous_attempt + 1 : $previous_attempt;
+		return ( $terminal || $changed || $expired ) ? $previous_attempt + 1 : $previous_attempt;
 	}
 }

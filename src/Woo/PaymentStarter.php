@@ -105,14 +105,30 @@ final class PaymentStarter {
 			$request = apply_filters( 'bitsnap_wc_checkout_request', $built['request'], $order );
 
 			$fingerprint = IdempotencyKey::fingerprint( array_merge( $request, array( '_env' => $environment ) ) );
+			$previous    = (int) $order->get_meta( Meta::ATTEMPT );
 			$attempt     = IdempotencyKey::next_attempt(
 				(int) $order->get_meta( Meta::ATTEMPT ),
 				(string) $order->get_meta( Meta::FINGERPRINT ),
 				$fingerprint,
 				(int) $order->get_meta( Meta::EXPIRES_AT ),
-				time()
+				time(),
+				$order->has_status( array( 'failed', 'cancelled' ) ) || in_array( (string) $order->get_meta( Meta::PAYMENT_STATE ), array( 'FAILED', 'EXPIRED' ), true )
 			);
 			$key         = IdempotencyKey::for_order( IdempotencyKey::site_hash( home_url() ), $order->get_id(), $attempt );
+
+			// Persist a new attempt before transport: ambiguous failures must reuse its key.
+			if ( $attempt !== $previous ) {
+				$order->update_meta_data( Meta::ATTEMPT, $attempt );
+				$order->update_meta_data( Meta::FINGERPRINT, $fingerprint );
+				$order->update_meta_data( Meta::EXPIRES_AT, 0 );
+				// Until the response identifies it, old terminal events cannot end this attempt.
+				$order->update_meta_data( Meta::PAYMENT_STATE, 'STARTING' );
+				$order->delete_meta_data( Meta::OFFLINE );
+				$order->set_status( 'pending' );
+				if ( ! $order->save() || ( method_exists( $order, 'get_last_save_error' ) && null !== $order->get_last_save_error() ) ) {
+					throw new ApiException( 'Could not save the payment attempt. Please retry.', 0, 'internal' );
+				}
+			}
 
 			$client = $this->plugin->client( $environment );
 			try {
@@ -138,13 +154,15 @@ final class PaymentStarter {
 			if ( null !== $returned_env && $returned_env !== $environment ) {
 				$this->logger->error( sprintf( 'Order %d: the %s key created a %s session. Check that the test and live keys are not swapped.', $order->get_id(), $environment, $returned_env ) );
 			}
-			$expires = isset( $response['expiresAt'] ) && is_string( $response['expiresAt'] ) ? (int) strtotime( $response['expiresAt'] ) : 0;
+			$expiry  = $response['expiresAt'] ?? 0;
+			$expires = is_numeric( $expiry ) ? max( 0, (int) $expiry ) : ( is_string( $expiry ) ? max( 0, (int) strtotime( $expiry ) ) : 0 );
 
 			$order->update_meta_data( Meta::ORDER_ID, isset( $response['orderId'] ) && is_scalar( $response['orderId'] ) ? (string) $response['orderId'] : '' );
 			$order->update_meta_data( Meta::ENVIRONMENT, $returned_env ?? $environment );
 			$order->update_meta_data( Meta::ATTEMPT, $attempt );
 			$order->update_meta_data( Meta::FINGERPRINT, $fingerprint );
 			$order->update_meta_data( Meta::EXPIRES_AT, $expires );
+			$order->update_meta_data( Meta::PAYMENT_STATE, ApiOrder::STATE_PENDING );
 			$order->delete_meta_data( Meta::RETURN_CHECKED );
 			$order->delete_meta_data( Meta::RECONCILED_AT );
 			$order->delete_meta_data( Meta::GAVE_UP );

@@ -144,13 +144,11 @@ final class Refunder {
 			if ( $pending && (int) ( $pending['wc_id'] ?? 0 ) !== $refund_id ) {
 				return new \WP_Error( 'bitsnap_refund_pending', 'An earlier refund needs reconciliation before another submission.' );
 			}
-			$order->update_meta_data(
-				'_bitsnap_pending_refund',
-				array(
-					'wc_id'   => $refund_id,
-					'request' => $request,
-				)
+			$pending = array(
+				'wc_id'   => $refund_id,
+				'request' => $request,
 			);
+			$order->update_meta_data( '_bitsnap_pending_refund', $pending );
 			if ( ! $order->save() || ( method_exists( $order, 'get_last_save_error' ) && null !== $order->get_last_save_error() ) ) {
 				return new \WP_Error( 'bitsnap_refund_pending_save', 'The pending refund could not be saved. Please retry.' );
 			}
@@ -191,6 +189,10 @@ final class Refunder {
 			if ( '' === $id ) {
 				return new \WP_Error( 'bitsnap_refund_invalid', 'Bitsnap did not return a refund identity. Retry reconciliation.' );
 			}
+			// Keep the remote identity recoverable if attaching it fails and Woo deletes its record.
+			$pending['remote_id'] = $id;
+			$order->update_meta_data( '_bitsnap_pending_refund', $pending );
+			$order->save();
 			// Record the id now, so the REFUND_SUCCEEDED webhook for this refund does not create a second WooCommerce refund.
 			if ( '' !== $id ) {
 				$wc_refund->update_meta_data( '_bitsnap_refund_id', $id );
@@ -231,7 +233,7 @@ final class Refunder {
 		if ( ! is_array( $pending ) || empty( $pending['wc_id'] ) || empty( $pending['request'] ) ) {
 			throw new \RuntimeException( 'Refund submission needs manual reconciliation.' );
 		}
-		$response = $this->plugin->client( (string) $order->get_meta( Meta::ENVIRONMENT ) )->call(
+		$response = ! empty( $pending['remote_id'] ) ? array( 'refund' => array( 'id' => $pending['remote_id'] ) ) : $this->plugin->client( (string) $order->get_meta( Meta::ENVIRONMENT ) )->call(
 			'RefundsService',
 			'CreateRefund',
 			$pending['request'],
@@ -241,6 +243,9 @@ final class Refunder {
 		if ( '' === $id ) {
 			throw new \RuntimeException( 'Refund identity is unavailable.' );
 		}
+		$pending['remote_id'] = $id;
+		$order->update_meta_data( '_bitsnap_pending_refund', $pending );
+		$order->save();
 		$refund = wc_get_order( (int) $pending['wc_id'] );
 		if ( $refund instanceof \WC_Order_Refund ) {
 			$refund->update_meta_data( '_bitsnap_refund_id', $id );

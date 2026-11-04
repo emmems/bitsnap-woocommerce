@@ -88,7 +88,7 @@ final class Event {
 	 * Normalises the `refund` object (section 9.3).
 	 *
 	 * @param mixed $refund Decoded refund.
-	 * @return array{id:string,amount:?int,status:string,reason:string,source:string}|null
+	 * @return array{id:string,order_id:string,currency:string,amount:?int,status:string,reason:string,source:string}|null
 	 */
 	private static function refund( $refund ): ?array {
 		if ( ! is_array( $refund ) ) {
@@ -98,11 +98,13 @@ final class Event {
 			return isset( $refund[ $key ] ) && is_scalar( $refund[ $key ] ) ? (string) $refund[ $key ] : '';
 		};
 		return array(
-			'id'     => $str( 'id' ),
-			'amount' => Money::amount_of( $refund['amount'] ?? null ),
-			'status' => ApiOrder::enum( $str( 'status' ), 'REFUND_STATUS_' ),
-			'reason' => $str( 'reason' ),
-			'source' => strtolower( $str( 'source' ) ),
+			'id'       => $str( 'id' ),
+			'order_id' => $str( 'orderId' ),
+			'currency' => isset( $refund['amount']['currency'] ) && is_string( $refund['amount']['currency'] ) ? strtoupper( $refund['amount']['currency'] ) : '',
+			'amount'   => Money::amount_of( $refund['amount'] ?? null ),
+			'status'   => ApiOrder::enum( $str( 'status' ), 'REFUND_STATUS_' ),
+			'reason'   => $str( 'reason' ),
+			'source'   => strtolower( $str( 'source' ) ),
 		);
 	}
 }

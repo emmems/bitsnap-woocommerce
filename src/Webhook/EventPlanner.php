@@ -60,6 +60,18 @@ final class EventPlanner {
 	public static function plan( array $event, array $context ): array {
 		$order = (array) ( $event['order'] ?? array() );
 
+		if ( in_array( $event['type'] ?? '', array( 'REFUND_SUCCEEDED', 'REFUND_FAILED' ), true ) && isset( $context['paid_attempt_id'] ) ) {
+			$refund = (array) ( $event['refund'] ?? array() );
+			if ( '' === $context['paid_attempt_id'] || ( $refund['order_id'] ?? '' ) !== $context['paid_attempt_id'] || ( $order['id'] ?? '' ) !== $context['paid_attempt_id'] || ( $refund['currency'] ?? '' ) !== $context['currency'] ) {
+				return array(
+					array(
+						'type' => 'note',
+						'note' => 'Bitsnap refund belongs to another payment attempt or currency. Ignored; review it manually.',
+					),
+				);
+			}
+		}
+
 		if ( 'INVOICE_ISSUED' === ( $event['type'] ?? '' ) ) {
 			return array();
 		}
@@ -131,6 +143,18 @@ final class EventPlanner {
 	 * @return array<int,array<string,mixed>>
 	 */
 	public static function plan_for_state( string $state, array $order, array $context ): array {
+		if ( ( empty( $context['awaiting_offline'] ) && ! empty( $context['is_paid'] ) ) || in_array( $context['status'] ?? '', array( 'completed', 'refunded' ), true ) ) {
+			if ( in_array( $state, array( ApiOrder::STATE_PAID, ApiOrder::STATE_REFUNDED, ApiOrder::STATE_PARTIAL_REFUND ), true ) && isset( $context['attempt_id'] ) && ( empty( $order['id'] ) || ( $order['amount_paid'] ?? null ) !== $context['total_minor'] || ( $order['currency'] ?? '' ) !== $context['currency'] ) ) {
+				return array(
+					array(
+						'type' => 'review',
+						'note' => 'Bitsnap received a payment with a missing identity or mismatched amount/currency for an already settled order. Review it manually.',
+					),
+				);
+			}
+			return array();
+		}
+
 		if ( isset( $context['attempt_id'] ) ) {
 			$current = '' !== ( $order['id'] ?? '' ) && $context['attempt_id'] === $order['id'];
 			$paid    = in_array( $state, array( ApiOrder::STATE_PAID, ApiOrder::STATE_REFUNDED, ApiOrder::STATE_PARTIAL_REFUND ), true );

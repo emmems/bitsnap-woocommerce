@@ -88,6 +88,12 @@ final class Meta {
 	 */
 	public const LIST_CAP = 50;
 
+	/** Last known state of the current payment attempt. */
+	public const PAYMENT_STATE = '_bitsnap_payment_state';
+
+	/** Payment needs a merchant review without changing fulfilment status. */
+	public const REVIEW = '_bitsnap_payment_review';
+
 	/** Invoice URL already noted on the order. */
 	public const INVOICE_URL = '_bitsnap_invoice_url';
 }

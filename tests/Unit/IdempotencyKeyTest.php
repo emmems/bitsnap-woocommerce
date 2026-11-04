@@ -6,6 +6,13 @@ use Bitsnap\WooCommerce\Support\IdempotencyKey;
 use PHPUnit\Framework\TestCase;
 
 final class IdempotencyKeyTest extends TestCase {
+	public function test_terminal_attempt_advances_even_with_unknown_or_future_expiry(): void {
+		foreach ( array( 0, time() + 1000 ) as $expiry ) {
+			$this->assertSame( 3, IdempotencyKey::next_attempt( 2, 'same', 'same', $expiry, time(), true ) );
+		}
+		$this->assertSame( 3, IdempotencyKey::next_attempt( 3, 'same', 'same', 0, time(), false ) );
+	}
+
 
 	public function test_site_hash_is_short_stable_and_ignores_trailing_slash_and_case(): void {
 		$hash = IdempotencyKey::site_hash( 'https://Shop.test/' );

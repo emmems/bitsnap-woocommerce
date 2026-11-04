@@ -87,6 +87,7 @@ final class EventTest extends TestCase {
 					'order'  => array( 'clientReferenceId' => '5' ),
 					'refund' => array(
 						'id'     => 'ref_1',
+						'orderId' => 'paid_attempt',
 						'amount' => array( 'amount' => 500, 'currency' => 'PLN' ),
 						'status' => 'REFUND_STATUS_SUCCEEDED',
 						'reason' => 'Damaged',
@@ -96,7 +97,7 @@ final class EventTest extends TestCase {
 			)
 		);
 		$this->assertSame(
-			array( 'id' => 'ref_1', 'amount' => 500, 'status' => 'SUCCEEDED', 'reason' => 'Damaged', 'source' => 'dashboard' ),
+			array( 'id' => 'ref_1', 'order_id' => 'paid_attempt', 'currency' => 'PLN', 'amount' => 500, 'status' => 'SUCCEEDED', 'reason' => 'Damaged', 'source' => 'dashboard' ),
 			$event['refund']
 		);
 	}

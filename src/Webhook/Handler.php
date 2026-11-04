@@ -154,8 +154,9 @@ final class Handler {
 
 			// Old senders sometimes used a unique id here; retain those entries,
 			// but a bare order id must never suppress every later event.
-			$seen = $this->updater->list_meta( $order, Meta::EVENTS );
-			if ( in_array( $event['id'], $seen, true ) || ( '' !== $event['legacy_id'] && in_array( $event['legacy_id'], $seen, true ) ) ) {
+			$seen           = $this->updater->list_meta( $order, Meta::EVENTS );
+			$missing_refund = 'REFUND_SUCCEEDED' === $event['type'] && ! in_array( (string) ( $event['refund']['id'] ?? '' ), $this->updater->existing_refund_ids( $order ), true );
+			if ( ! $missing_refund && ( in_array( $event['id'], $seen, true ) || ( '' !== $event['legacy_id'] && in_array( $event['legacy_id'], $seen, true ) ) ) ) {
 				return array( 200, 'duplicate' );
 			}
 
