@@ -77,6 +77,7 @@ final class Plugin {
 		add_action( 'woocommerce_blocks_payment_method_type_registration', array( $this, 'register_block_payment_method' ) );
 		add_filter( 'plugin_action_links_' . plugin_basename( BITSNAP_WC_FILE ), array( $this, 'action_links' ) );
 
+		add_action( 'woocommerce_create_refund', array( Refunder::class, 'capture' ), PHP_INT_MAX, 2 );
 		$this->handler()->register();
 		( new ReturnPage( $this->sync() ) )->register();
 		$this->reconciler()->register();

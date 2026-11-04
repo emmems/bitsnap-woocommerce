@@ -66,6 +66,8 @@ final class ApiOrder {
 			'payment_id'          => self::str( $order, 'paymentId' ),
 			'payment_state'       => self::enum( self::str( $order, 'paymentState' ), 'PAYMENT_STATE_' ),
 			'amount_paid'         => Money::amount_of( $paid ),
+			'total_amount'        => Money::amount_of( $total ),
+			'total_currency'      => is_array( $total ) ? strtoupper( (string) ( $total['currency'] ?? '' ) ) : '',
 			'amount_refunded'     => Money::amount_of( $refunded ),
 			'currency'            => $currency,
 			'environment'         => self::environment( self::str( $order, 'environment' ) ),

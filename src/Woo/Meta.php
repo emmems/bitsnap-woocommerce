@@ -24,6 +24,11 @@ final class Meta {
 	public const ORDER_ID = '_bitsnap_order_id';
 
 	/**
+	 * Attempt that actually paid, which may predate the latest session.
+	 */
+	public const PAID_ORDER_ID = '_bitsnap_paid_order_id';
+
+	/**
 	 * Environment of the latest session: 'test' or 'live'.
 	 */
 	public const ENVIRONMENT = '_bitsnap_environment';

@@ -43,6 +43,9 @@ final class OrderUpdater {
 	 */
 	public function context( \WC_Order $order ): array {
 		return array(
+			'attempt_id'       => (string) $order->get_meta( Meta::ORDER_ID ),
+			'total_minor'      => Money::to_minor( (float) $order->get_total() ),
+			'currency'         => $order->get_currency(),
 			'status'           => $order->get_status(),
 			'is_paid'          => $order->is_paid(),
 			'awaiting_offline' => '' !== (string) $order->get_meta( Meta::OFFLINE ),
@@ -68,6 +71,7 @@ final class OrderUpdater {
 			);
 			switch ( $action['type'] ) {
 				case 'payment_complete':
+					$order->update_meta_data( Meta::PAID_ORDER_ID, (string) $api_order['id'] );
 					$this->label_payment( $order, $api_order );
 					$order->delete_meta_data( Meta::OFFLINE );
 					$order->save();
@@ -76,6 +80,7 @@ final class OrderUpdater {
 					break;
 
 				case 'offline_paid':
+					$order->update_meta_data( Meta::PAID_ORDER_ID, (string) $api_order['id'] );
 					$this->label_payment( $order, $api_order );
 					if ( '' !== (string) $action['payment_id'] ) {
 						$order->set_transaction_id( (string) $action['payment_id'] );
@@ -173,36 +178,64 @@ final class OrderUpdater {
 	 * @param \WC_Order           $order  Order.
 	 * @param array<string,mixed> $action Refund action.
 	 * @return void
+	 * @throws \RuntimeException When a refund cannot be persisted or is still being submitted.
 	 */
 	private function record_refund( \WC_Order $order, array $action ): void {
+		foreach ( $order->get_refunds() as $existing ) {
+			if ( (string) $existing->get_meta( '_bitsnap_refund_id' ) === (string) $action['refund_id'] ) {
+				return;
+			}
+		}
+		if ( $order->get_meta( '_bitsnap_pending_refund' ) ) {
+			\Bitsnap\WooCommerce\Plugin::instance()->refunder()->settle_pending( $order );
+			// Recovery may have attached this remote refund to the admin's record.
+			foreach ( $order->get_refunds() as $existing ) {
+				if ( (string) $existing->get_meta( '_bitsnap_refund_id' ) === (string) $action['refund_id'] ) {
+					return;
+				}
+			}
+		}
 		$amount = Money::to_major_string( (int) $action['amount'] );
 		$reason = '' !== (string) $action['reason']
 			? (string) $action['reason']
 			/* translators: %s: where the refund was made, for example "dashboard". */
 			: sprintf( __( 'Refunded in Bitsnap (%s)', 'bitsnap-for-woocommerce' ), '' !== (string) $action['source'] ? (string) $action['source'] : 'api' );
 
-		$refund = wc_create_refund(
-			array(
-				'amount'         => $amount,
-				'reason'         => $reason,
-				'order_id'       => $order->get_id(),
-				'refund_payment' => false,
-				'restock_items'  => false,
-			)
-		);
+		// Set identity on the refund before its first database save.
+		$identity = static function ( $refund ) use ( $action ) {
+			if ( $refund instanceof \WC_Order_Refund && ! $refund->get_id() ) {
+				$refund->update_meta_data( '_bitsnap_refund_id', (string) $action['refund_id'] );
+			}
+		};
+		add_action( 'woocommerce_before_order_refund_object_save', $identity );
+		try {
+			$refund = wc_create_refund(
+				array(
+					'amount'         => $amount,
+					'reason'         => $reason,
+					'order_id'       => $order->get_id(),
+					'refund_payment' => false,
+					'restock_items'  => false,
+				)
+			);
 
-		if ( is_wp_error( $refund ) ) {
-			$this->logger->error( 'Could not record refund ' . $action['refund_id'] . ' on order ' . $order->get_id() . ': ' . $refund->get_error_message() );
+		} finally {
+			remove_action( 'woocommerce_before_order_refund_object_save', $identity );
+		}
+
+		if ( is_wp_error( $refund ) || ! $refund instanceof \WC_Order_Refund || ! $refund->get_id() || ( method_exists( $refund, 'get_last_save_error' ) && null !== $refund->get_last_save_error() ) ) {
+			$error = is_wp_error( $refund ) ? $refund->get_error_message() : 'The WooCommerce refund was not persisted.';
+			$this->logger->error( 'Could not record refund ' . $action['refund_id'] . ' on order ' . $order->get_id() . ': ' . $error );
 			$order->add_order_note(
 				sprintf(
 					/* translators: 1: refund amount, 2: Bitsnap refund id, 3: error message. */
 					__( 'Bitsnap refunded %1$s (refund %2$s), but WooCommerce could not record it: %3$s. Record the refund manually.', 'bitsnap-for-woocommerce' ),
 					$amount,
 					$action['refund_id'],
-					$refund->get_error_message()
+					$error
 				)
 			);
-			return;
+			throw new \RuntimeException( 'Could not persist Bitsnap refund.' );
 		}
 
 		$this->remember( $order, Meta::REFUND_IDS, (string) $action['refund_id'] );
@@ -234,6 +267,7 @@ final class OrderUpdater {
 				/* translators: 1: payment method such as BLIK, 2: transaction id. */
 				return sprintf( __( 'Bitsnap payment received (%1$s, transaction %2$s).', 'bitsnap-for-woocommerce' ), $gateway, $payment );
 			case 'offline_paid':
+					$order->update_meta_data( Meta::PAID_ORDER_ID, (string) $api_order['id'] );
 				/* translators: 1: payment method, 2: transaction id. */
 				return sprintf( __( 'Bitsnap confirmed the payment (%1$s, transaction %2$s).', 'bitsnap-for-woocommerce' ), $gateway, $payment );
 			case 'payment_failed':

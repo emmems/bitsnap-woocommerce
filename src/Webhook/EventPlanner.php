@@ -61,7 +61,7 @@ final class EventPlanner {
 		$order = (array) ( $event['order'] ?? array() );
 
 		if ( 'INVOICE_ISSUED' === ( $event['type'] ?? '' ) ) {
-			return $actions;
+			return array();
 		}
 		switch ( $event['type'] ?? '' ) {
 			case 'TRANSACTION_CREATED':
@@ -131,6 +131,52 @@ final class EventPlanner {
 	 * @return array<int,array<string,mixed>>
 	 */
 	public static function plan_for_state( string $state, array $order, array $context ): array {
+		if ( isset( $context['attempt_id'] ) ) {
+			$current = '' !== ( $order['id'] ?? '' ) && $context['attempt_id'] === $order['id'];
+			$paid    = in_array( $state, array( ApiOrder::STATE_PAID, ApiOrder::STATE_REFUNDED, ApiOrder::STATE_PARTIAL_REFUND ), true );
+			if ( $paid && empty( $order['id'] ) ) {
+				return array(
+					array(
+						'type'   => 'set_status',
+						'status' => 'on-hold',
+						'note'   => 'Bitsnap payment has no payment attempt identity. Review the payment manually.',
+					),
+				);
+			}
+			if ( ! $current && ! $paid ) {
+				return array();
+			}
+			if ( ! $paid && isset( $order['total_amount'] ) && ( $order['total_amount'] !== $context['total_minor'] || $order['total_currency'] !== $context['currency'] ) ) {
+				return array(
+					array(
+						'type'   => 'set_status',
+						'status' => 'on-hold',
+						'note'   => 'Bitsnap attempt total differs from the edited order. Review the payment manually.',
+					),
+				);
+			}
+			if ( $paid && ( ( $order['amount_paid'] ?? null ) !== $context['total_minor'] || ( $order['currency'] ?? '' ) !== $context['currency'] ) ) {
+				return array(
+					array(
+						'type'   => 'set_status',
+						'status' => 'on-hold',
+						'note'   => 'Bitsnap payment amount or currency differs from the current order total. Review the payment manually.',
+					),
+				);
+			}
+			if ( $paid && ! $current ) {
+				$context['attempt_id'] = $order['id'];
+				return array_merge(
+					array(
+						array(
+							'type' => 'note',
+							'note' => 'Bitsnap received payment from an older payment attempt matching the order total.',
+						),
+					),
+					self::plan_for_state( $state, $order, $context )
+				);
+			}
+		}
 		$status     = (string) ( $context['status'] ?? '' );
 		$is_paid    = ! empty( $context['is_paid'] );
 		$offline    = ! empty( $context['awaiting_offline'] );

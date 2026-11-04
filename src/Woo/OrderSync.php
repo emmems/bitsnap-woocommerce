@@ -77,7 +77,7 @@ final class OrderSync {
 				array( 'clientReferenceId' => (string) $order->get_id() )
 			);
 		} catch ( ApiException $e ) {
-			$this->logger->error( sprintf( 'Could not read the payment of order %d (%s): %s', $order->get_id(), $source, $e->getMessage() ) );
+			$this->logger->error( sprintf( 'Could not read the payment of order %d (%s): HTTP %d', $order->get_id(), $source, $e->get_http_status() ) );
 			return null;
 		}
 
@@ -90,10 +90,25 @@ final class OrderSync {
 			return null;
 		}
 
-		$context = $this->updater->context( $order );
-		$actions = array_merge( EventPlanner::plan_invoice( $api_order, $context ), EventPlanner::plan_for_state( $api_order['payment_state'], $api_order, $context ) );
-		$this->updater->apply( $order, $actions, $api_order, $source );
+		$lock = null;
+		try {
+			$lock  = new \Bitsnap\WooCommerce\Support\Lock( 'order:' . $order->get_id() );
+			$order = OrderState::reload( $order->get_id() );
+			if ( ! $order instanceof \WC_Order || $environment !== (string) $order->get_meta( Meta::ENVIRONMENT ) || ! hash_equals( $order->get_order_key(), $key ) || ( null !== $api_order['environment'] && $environment !== $api_order['environment'] ) ) {
+				return null;
+			}
+			$context = $this->updater->context( $order );
+			$actions = array_merge( EventPlanner::plan_invoice( $api_order, $context ), EventPlanner::plan_for_state( $api_order['payment_state'], $api_order, $context ) );
+			$this->updater->apply( $order, $actions, $api_order, $source );
 
-		return $api_order['payment_state'];
+			return $api_order['payment_state'];
+		} catch ( \Throwable $e ) {
+			$this->logger->error( 'Order reconciliation could not be applied; it will be retried.' );
+			return null;
+		} finally {
+			if ( null !== $lock ) {
+				$lock->release();
+			}
+		}
 	}
 }

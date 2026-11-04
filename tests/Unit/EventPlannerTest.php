@@ -9,6 +9,28 @@ use PHPUnit\Framework\TestCase;
 
 final class EventPlannerTest extends TestCase {
 
+	public function test_invoice_has_no_payment_transition(): void {
+		$this->assertSame( array(), EventPlanner::plan( $this->event( 'INVOICE_ISSUED' ), $this->ctx( 'pending' ) ) );
+	}
+
+	public function test_attempt_and_amount_guards_apply_to_reconciliation_states(): void {
+		$context = array_merge( $this->ctx( 'pending' ), array( 'attempt_id' => 'new', 'total_minor' => 1000, 'currency' => 'PLN' ) );
+		$order = array( 'id' => 'old', 'amount_paid' => 1000, 'currency' => 'PLN', 'payment_id' => 'paid_old' );
+		foreach ( array( 'FAILED', 'EXPIRED', 'AWAITING_OFFLINE' ) as $state ) {
+			$this->assertSame( array(), EventPlanner::plan_for_state( $state, $order, $context ) );
+		}
+		$actions = EventPlanner::plan_for_state( 'PAID', $order, $context );
+		$this->assertSame( array( 'note', 'payment_complete' ), $this->types( $actions ) );
+		$missing = $order;
+		unset( $missing['id'] );
+		$this->assertSame( 'on-hold', EventPlanner::plan_for_state( 'PAID', $missing, $context )[0]['status'] );
+		foreach ( array( array( 999, 'PLN' ), array( 1000, 'EUR' ), array( null, 'PLN' ), array( 1001, 'PLN' ) ) as $money ) {
+			$order['amount_paid'] = $money[0];
+			$order['currency'] = $money[1];
+			$this->assertSame( 'on-hold', EventPlanner::plan_for_state( 'PAID', $order, $context )[0]['status'] );
+		}
+	}
+
 	private function ctx( string $status, bool $paid = false, bool $offline = false, array $refunds = array() ): array {
 		return array(
 			'status'           => $status,

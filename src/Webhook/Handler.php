@@ -139,27 +139,33 @@ final class Handler {
 			return array( 200, 'ignored' );
 		}
 
-		$order = ctype_digit( $api_order['client_reference_id'] ) ? wc_get_order( (int) $api_order['client_reference_id'] ) : false;
-		if ( ! $order instanceof \WC_Order
+		$lock = null;
+		try {
+			$lock  = new \Bitsnap\WooCommerce\Support\Lock( 'order:' . (int) $api_order['client_reference_id'] );
+			$order = ctype_digit( $api_order['client_reference_id'] ) ? \Bitsnap\WooCommerce\Woo\OrderState::reload( (int) $api_order['client_reference_id'] ) : false;
+			if ( ! $order instanceof \WC_Order
 			|| '' === (string) $order->get_meta( Meta::ORDER_ID )
 			|| $environment !== (string) $order->get_meta( Meta::ENVIRONMENT )
 			|| ! hash_equals( $order->get_order_key(), (string) ( $metadata['wcOrderKey'] ?? '' ) ) ) {
-			$this->logger->info( 'Webhook ' . $event['id'] . ' is for an unknown order (reference ' . $api_order['client_reference_id'] . ').' );
-			return array( 404, 'unknown_order' );
-		}
+				$this->logger->info( 'Webhook ' . $event['id'] . ' is for an unknown order (reference ' . $api_order['client_reference_id'] . ').' );
+				return array( 404, 'unknown_order' );
+			}
 
-		if ( in_array( $event['id'], $this->updater->list_meta( $order, Meta::EVENTS ), true ) ) {
-			return array( 200, 'duplicate' );
-		}
+			if ( in_array( $event['id'], $this->updater->list_meta( $order, Meta::EVENTS ), true ) ) {
+				return array( 200, 'duplicate' );
+			}
 
-		try {
 			$context = $this->updater->context( $order );
 			$actions = array_merge( EventPlanner::plan_invoice( $api_order, $context ), EventPlanner::plan( $event, $context ) );
 			$this->updater->apply( $order, $actions, $api_order, 'webhook' );
 			$this->updater->remember( $order, Meta::EVENTS, $event['id'] );
 		} catch ( \Throwable $e ) {
-			$this->logger->error( 'Webhook ' . $event['id'] . ' failed: ' . $e->getMessage() );
+			$this->logger->error( 'Webhook ' . $event['id'] . ' could not be applied; retry required.' );
 			return array( 500, 'error' );
+		} finally {
+			if ( null !== $lock ) {
+				$lock->release();
+			}
 		}
 
 		$this->logger->info( 'Webhook ' . $event['id'] . ' (' . $event['type'] . ') applied to order ' . $order->get_id() . ': ' . count( $actions ) . ' action(s).' );
