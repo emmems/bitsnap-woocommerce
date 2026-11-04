@@ -16,7 +16,8 @@ final class EventTest extends TestCase {
 		$event = Event::parse(
 			$this->body(
 				array(
-					'id'       => 'evt_1',
+					'id'       => 'ord_1',
+					'eventId' => 'evt_1',
 					'event'    => 'transaction_success',
 					'order'    => array(
 						'id'                => 'ord_1',
@@ -51,6 +52,13 @@ final class EventTest extends TestCase {
 		$body  = $this->body( array( 'event' => 'TRANSACTION_SUCCESS', 'order' => array() ) );
 		$event = Event::parse( $body );
 		$this->assertSame( 'body:' . hash( 'sha256', $body ), $event['id'] );
+	}
+
+	public function test_legacy_identity_includes_event_type(): void {
+		$created = Event::parse( $this->body( array( 'id' => 'ord_1', 'event' => 'TRANSACTION_CREATED' ) ) );
+		$paid = Event::parse( $this->body( array( 'id' => 'ord_1', 'event' => 'TRANSACTION_SUCCESS' ) ) );
+		$this->assertSame( 'ord_1:TRANSACTION_CREATED', $created['id'] );
+		$this->assertSame( 'ord_1:TRANSACTION_SUCCESS', $paid['id'] );
 	}
 
 	/**

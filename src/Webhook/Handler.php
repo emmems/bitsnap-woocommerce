@@ -151,7 +151,10 @@ final class Handler {
 				return array( 404, 'unknown_order' );
 			}
 
-			if ( in_array( $event['id'], $this->updater->list_meta( $order, Meta::EVENTS ), true ) ) {
+			// Old senders sometimes used a unique id here; retain those entries,
+			// but a bare order id must never suppress every later event.
+			$seen = $this->updater->list_meta( $order, Meta::EVENTS );
+			if ( in_array( $event['id'], $seen, true ) || ( '' !== $event['legacy_id'] && in_array( $event['legacy_id'], $seen, true ) ) ) {
 				return array( 200, 'duplicate' );
 			}
 
