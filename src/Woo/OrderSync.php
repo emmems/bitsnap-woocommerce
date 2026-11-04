@@ -94,7 +94,7 @@ final class OrderSync {
 		try {
 			$lock  = new \Bitsnap\WooCommerce\Support\Lock( 'order:' . $order->get_id() );
 			$order = OrderState::reload( $order->get_id() );
-			if ( ! $order instanceof \WC_Order || $environment !== (string) $order->get_meta( Meta::ENVIRONMENT ) || ! hash_equals( $order->get_order_key(), $key ) || ( null !== $api_order['environment'] && $environment !== $api_order['environment'] ) ) {
+			if ( ! $order instanceof \WC_Order || ! in_array( $order->get_payment_method(), Gateway::IDS, true ) || $environment !== (string) $order->get_meta( Meta::ENVIRONMENT ) || ! hash_equals( $order->get_order_key(), $key ) || ( null !== $api_order['environment'] && $environment !== $api_order['environment'] ) ) {
 				return null;
 			}
 			$context = $this->updater->context( $order );

@@ -94,6 +94,8 @@ final class Plugin {
 	 */
 	public function add_gateway( $gateways ) {
 		$gateways[] = Gateway::class;
+		$gateways[] = \Bitsnap\WooCommerce\Woo\ManualGateway::class;
+		$gateways[] = \Bitsnap\WooCommerce\Woo\CodGateway::class;
 		return $gateways;
 	}
 
@@ -104,7 +106,9 @@ final class Plugin {
 	 * @return void
 	 */
 	public function register_block_payment_method( $registry ): void {
-		$registry->register( new PaymentMethod( $this ) );
+		foreach ( Gateway::IDS as $id ) {
+			$registry->register( new PaymentMethod( $this, $id ) );
+		}
 	}
 
 	/**

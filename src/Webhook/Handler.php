@@ -144,6 +144,7 @@ final class Handler {
 			$lock  = new \Bitsnap\WooCommerce\Support\Lock( 'order:' . (int) $api_order['client_reference_id'] );
 			$order = ctype_digit( $api_order['client_reference_id'] ) ? \Bitsnap\WooCommerce\Woo\OrderState::reload( (int) $api_order['client_reference_id'] ) : false;
 			if ( ! $order instanceof \WC_Order
+			|| ! in_array( $order->get_payment_method(), \Bitsnap\WooCommerce\Woo\Gateway::IDS, true )
 			|| '' === (string) $order->get_meta( Meta::ORDER_ID )
 			|| $environment !== (string) $order->get_meta( Meta::ENVIRONMENT )
 			|| ! hash_equals( $order->get_order_key(), (string) ( $metadata['wcOrderKey'] ?? '' ) ) ) {

@@ -13,7 +13,11 @@ Accept BLIK, cards, bank transfers and more in WooCommerce through Bitsnap. The 
 
 == Description ==
 
-Bitsnap for WooCommerce adds a payment method to your checkout. When a buyer chooses it, the plugin creates a payment in your [Bitsnap](https://bitsnap.pl) project and sends the buyer to the Bitsnap payment page. There they pay with any method you enabled in the project: BLIK, PayU, Przelewy24, Stripe, imoje, cash on delivery or a manual bank transfer. Bitsnap tells your shop when the payment succeeds, fails or expires, and WooCommerce updates the order.
+Bitsnap for WooCommerce adds online payments, traditional bank transfer and cash on delivery to your checkout. When a buyer chooses it, the plugin creates a payment in your [Bitsnap](https://bitsnap.pl) project and sends the buyer to the Bitsnap payment page. The selected WooCommerce method opens the matching payment flow in Bitsnap; online payments use providers such as BLIK, PayU, Przelewy24, Stripe or imoje. Bitsnap tells your shop when the payment succeeds, fails or expires, and WooCommerce updates the order.
+
+Payment methods: online (BLIK, card, online transfer), traditional bank transfer and cash on delivery have independent enable switches, titles and descriptions. The latter two are off by default and share the main Bitsnap connection and credentials. Cash on delivery is offered only for orders needing shipping. Each method supports classic and Blocks checkout. Offline refunds require returning the money yourself and recording a manual refund.
+
+Webhook retries deduplicate by eventId, with id:event compatibility for older senders.
 
 **Features**
 
@@ -42,7 +46,7 @@ This plugin connects to the Bitsnap service (https://bitsnap.pl), operated by Bi
 
 The base address is https://bitsnap.pl. It can be changed under "Advanced" in the gateway settings.
 
-**1. Starting a payment.** When a buyer places an order with this payment method, the plugin sends a request to `https://bitsnap.pl/api/v1/bitsnap.v1.CheckoutService/CreateCheckoutSession`. It sends: the order lines (name, SKU, quantity, gross price, VAT rate, product image URL), shipping, fees, discount, order total and currency; the order number, order key, your site address and the plugin version; the return and cancel URLs; the language; and, if your API key allows it, the buyer's email, name, phone number, company, tax number (NIP) and billing and shipping address. The buyer's browser is then redirected to the Bitsnap payment page, where Bitsnap processes the payment.
+**1. Starting a payment.** When a buyer places an order with this payment method, the plugin sends a request to `https://bitsnap.pl/api/v1/bitsnap.v1.CheckoutService/CreateCheckoutSession`. It sends: the order lines (name, SKU, quantity, gross price, VAT rate, product image URL), shipping, fees, discount, order total and currency; the order number, order key, your site address and the plugin version; the return and cancel URLs; the language and selected payment method; and, if your API key allows it, the buyer's email, name, phone number, company, tax number (NIP) and billing and shipping address. The buyer's browser is then redirected to the Bitsnap payment page, where Bitsnap processes the payment.
 
 **2. Checking a payment.** When the buyer returns to the shop and the order is still unpaid, and every 15 minutes for orders that stay unpaid for up to 48 hours, the plugin sends the order number to `https://bitsnap.pl/api/v1/bitsnap.v1.OrdersService/GetOrder` and reads the payment status.
 

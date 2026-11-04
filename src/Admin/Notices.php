@@ -115,7 +115,7 @@ final class Notices {
 		$page    = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
 		$section = isset( $_GET['section'] ) ? sanitize_key( wp_unslash( $_GET['section'] ) ) : '';
 		// phpcs:enable WordPress.Security.NonceVerification.Recommended
-		return 'wc-settings' === $page && 'bitsnap' === $section;
+		return 'wc-settings' === $page && in_array( $section, \Bitsnap\WooCommerce\Woo\Gateway::IDS, true );
 	}
 
 	/**

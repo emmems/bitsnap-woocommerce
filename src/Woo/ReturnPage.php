@@ -52,7 +52,7 @@ final class ReturnPage {
 	 */
 	public function check( $order_id ): void {
 		$order = wc_get_order( (int) $order_id );
-		if ( ! $order instanceof \WC_Order || 'bitsnap' !== $order->get_payment_method() ) {
+		if ( ! $order instanceof \WC_Order || ! in_array( $order->get_payment_method(), Gateway::IDS, true ) ) {
 			return;
 		}
 		if ( ! $order->has_status( 'pending' ) || '' === (string) $order->get_meta( Meta::ORDER_ID ) ) {

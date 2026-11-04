@@ -1,6 +1,6 @@
 # Architecture
 
-Bitsnap for WooCommerce is a redirect payment gateway. WooCommerce keeps the catalogue, cart, prices, coupons, taxes, shipping, stock and order status. Bitsnap keeps the payment attempt, the choice of payment method, the buyer's payment page, the payment status and running refunds.
+Bitsnap for WooCommerce provides three redirect payment gateways: `bitsnap` (online), `bitsnap_manual` (bank transfer), and `bitsnap_cod` (cash on delivery). All use `Gateway::IDS` for order matching and share `woocommerce_bitsnap_settings`, credentials, connection and webhook. The additional methods default to disabled; each has independent enabled, title and description fields. COD requires shipping in classic and Blocks checkout. WooCommerce keeps the catalogue, cart, prices, coupons, taxes, shipping, stock and order status. Bitsnap keeps the payment attempt, the choice of payment method, the buyer's payment page, the payment status and running refunds.
 
 ```
 WooCommerce checkout (classic or Blocks)
@@ -100,7 +100,8 @@ Sent with `Idempotency-Key: woo-<site hash>-<order id>-<attempt>`. The attempt n
   "cancelUrl": "https://shop/checkout/order-pay/123/?pay_for_order=true&key=wc_order_x&bitsnap_cancelled=1",
   "clientReferenceId": "123",
   "metadata": { "source": "woocommerce", "wcOrderKey": "wc_order_x", "siteUrl": "https://shop" },
-  "locale": "pl"
+  "locale": "pl",
+  "paymentMethod": "CHECKOUT_PAYMENT_METHOD_ONLINE"
 }
 ```
 
@@ -111,7 +112,7 @@ How the plugin fills the request:
 - **Lines** use the gross unit price before coupons (`subtotal + subtotal_tax`, divided by the quantity, rounded). The VAT rate is the WooCommerce tax rate applied to the line, or the ratio of tax to net when several rates apply. It is omitted when the shop has taxes switched off.
 - **Fees** become lines. A negative fee is added to `discount`.
 - **Coupons** become `discount`: the difference between line subtotals and line totals, gross.
-- **Shipping** lines are combined into one `shipping` object. Free shipping omits it.
+- **Shipping** lines are combined into one `shipping` object. Free shipping omits it for online and manual payments; COD sends a zero-price shipping line.
 - **Rounding.** `total` is WooCommerce's order total. A unit price is a whole number of grosze, so `3 × 33.33` cannot be exact, and WooCommerce rounds taxes its own way. The plugin sums the lines, then closes any difference: a higher shop total adds a "Rounding" line, a lower one is added to `discount`. Sum of lines + shipping − discount always equals `total`. Lines past the 100-line limit are folded into one "Other items" line.
 - **NIP** is read from the order meta of common invoice plugins (`_billing_nip`, `billing_nip`, `_billing_vat_number` and others), validated (ten digits and checksum), and filterable with `bitsnap_wc_order_nip`. The plugin adds no checkout field of its own.
 - If the key has no `customers:pii` scope, the plugin retries once without `buyer`.
@@ -126,7 +127,7 @@ How the plugin fills the request:
 
 ### Webhooks
 
-`POST` with a JSON body and `X-Content-Signature` = hex HMAC-SHA512 of the raw body with the `whsec_` secret. Payload: `{ projectId, environment?, eventData: { id, event, order, customer, refund? } }`.
+`POST` with a JSON body and `X-Content-Signature` = hex HMAC-SHA512 of the raw body with the `whsec_` secret. Payload: `{ projectId, environment?, eventData: { id, eventId, event, order, customer, refund? } }`.
 
 | Event | Action |
 | --- | --- |
@@ -142,7 +143,7 @@ Handler rules:
 1. Verify the signature with `hash_equals` against both the test and the live secret. The secret that matches decides the environment. If one secret is used for both, the payload's `environment` decides.
 2. Ignore, with `200`, events that are not for this shop: no `metadata.source = woocommerce`, or a `metadata.siteUrl` that is another site. A Bitsnap project sends every event of every order to every webhook, and two shops can share a project.
 3. Find the order by `clientReferenceId` and cross-check `metadata.wcOrderKey` and the stored environment.
-4. Skip an event id already in the order's `_bitsnap_events` list (last 50). The id is stored only after the event was applied, so a crash lets the retry run.
+4. Deduplicate on `eventData.eventId`, falling back to `id:event` for older senders. Never deduplicate on the bare order id. Previously stored unique event ids still match; ambiguous bare order ids do not suppress later events. Skip an event id already in the order's `_bitsnap_events` list (last 50). The id is stored only after the event was applied, so a crash lets the retry run.
 5. Apply the planned actions. Every action is safe to run twice.
 
 Response codes:
@@ -186,3 +187,5 @@ API destinations require public HTTPS and are checked again at each transport ca
 Reconciliation advances a persistent page cursor across batches of 20 pending candidates, so continuously pending recent orders cannot monopolize every run. CI builds the Blocks script and runs the smoke suite in both HPOS modes; `bin/review-checks.sh` reproduces the Docker PHP matrix and smoke checks.
 
 The latest checkout attempt remains in `order_id`. When an older attempt pays the exact current total, the order is paid with a note and `paid_order_id` retains the actual paying attempt for subsequent refunds. Failure and expiry from older attempts do not change status. Payments with a mismatched amount or currency are held for review.
+
+Payment selection is explicit: the three gateway IDs send `CHECKOUT_PAYMENT_METHOD_ONLINE`, `CHECKOUT_PAYMENT_METHOD_MANUAL` and `CHECKOUT_PAYMENT_METHOD_COD` respectively. Each has a server Blocks integration instance and a JavaScript registration. Backend refusals produce a translated checkout error; the API logger records the reason. Offline states and `MANUAL_REQUIRED` refunds use the shared planner and refunder under the existing order lease.

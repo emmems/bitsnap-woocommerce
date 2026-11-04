@@ -40,9 +40,11 @@ final class PaymentMethod extends AbstractPaymentMethodType {
 	 * Constructor.
 	 *
 	 * @param Plugin $plugin Plugin container.
+	 * @param string $id Gateway identifier.
 	 */
-	public function __construct( Plugin $plugin ) {
+	public function __construct( Plugin $plugin, string $id = 'bitsnap' ) {
 		$this->plugin = $plugin;
+		$this->name   = $id;
 	}
 
 	/**
@@ -52,6 +54,14 @@ final class PaymentMethod extends AbstractPaymentMethodType {
 	 */
 	public function initialize() {
 		$this->settings = get_option( Settings::OPTION, array() );
+		if ( 'bitsnap' !== $this->name ) {
+			foreach ( array( 'enabled', 'title', 'description' ) as $key ) {
+				unset( $this->settings[ $key ] );
+				if ( isset( $this->settings[ $this->name . '_' . $key ] ) ) {
+					$this->settings[ $key ] = $this->settings[ $this->name . '_' . $key ];
+				}
+			}
+		}
 	}
 
 	/**
@@ -95,9 +105,12 @@ final class PaymentMethod extends AbstractPaymentMethodType {
 	 * @return array<string,mixed>
 	 */
 	public function get_payment_method_data() {
+		$gateways = WC()->payment_gateways()->payment_gateways();
+		$gateway  = $gateways[ $this->name ];
 		return array(
-			'title'               => $this->get_setting( 'title' ),
-			'description'         => $this->get_setting( 'description' ),
+			'enabled'             => $this->is_active(),
+			'title'               => $this->get_setting( 'title', $gateway->get_title() ),
+			'description'         => $this->get_setting( 'description', $gateway->description ),
 			'supports'            => array( 'products', 'refunds' ),
 			'testMode'            => 'test' === $this->plugin->credentials()->environment(),
 			'supportedCurrencies' => Gateway::supported_currencies(),

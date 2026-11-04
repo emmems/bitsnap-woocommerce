@@ -21,6 +21,46 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Gateway extends \WC_Payment_Gateway {
 
+	/** All gateway identifiers sharing this integration. */
+	public const IDS = array( 'bitsnap', 'bitsnap_manual', 'bitsnap_cod' );
+
+	/**
+	 * Gateway identifier.
+	 *
+	 * @return string
+	 */
+	protected function gateway_id(): string {
+		return 'bitsnap';
+	}
+
+	/**
+	 * Shared settings option.
+	 *
+	 * @return string
+	 */
+	public function get_option_key() {
+		return \Bitsnap\WooCommerce\Support\Settings::OPTION;
+	}
+
+	/**
+	 * Request enum for a WooCommerce gateway id.
+	 *
+	 * @param string $id Gateway identifier.
+	 * @return string
+	 */
+	public static function payment_method( string $id ): string {
+		return 'CHECKOUT_PAYMENT_METHOD_' . ( 'bitsnap_cod' === $id ? 'COD' : ( 'bitsnap_manual' === $id ? 'MANUAL' : 'ONLINE' ) );
+	}
+
+	/**
+	 * Presentation field prefix in shared storage.
+	 *
+	 * @return string
+	 */
+	private function presentation_prefix(): string {
+		return 'bitsnap' === $this->id ? '' : $this->id . '_';
+	}
+
 	/**
 	 * Plugin container.
 	 *
@@ -33,19 +73,19 @@ class Gateway extends \WC_Payment_Gateway {
 	 */
 	public function __construct() {
 		$this->plugin             = Plugin::instance();
-		$this->id                 = 'bitsnap';
+		$this->id                 = $this->gateway_id();
 		$this->icon               = '';
 		$this->has_fields         = false;
-		$this->method_title       = __( 'Bitsnap', 'bitsnap-for-woocommerce' );
+		$this->method_title       = 'bitsnap_manual' === $this->id ? __( 'Bitsnap: traditional bank transfer', 'bitsnap-for-woocommerce' ) : ( 'bitsnap_cod' === $this->id ? __( 'Bitsnap: cash on delivery', 'bitsnap-for-woocommerce' ) : __( 'Bitsnap', 'bitsnap-for-woocommerce' ) );
 		$this->method_description = __( 'Accept BLIK, cards, bank transfers and more through Bitsnap. The buyer pays on a secure Bitsnap page.', 'bitsnap-for-woocommerce' );
 		$this->supports           = array( 'products', 'refunds' );
 
 		$this->init_form_fields();
 		$this->init_settings();
 
-		$this->title       = $this->get_option( 'title' );
-		$this->description = $this->get_option( 'description' );
-		$this->enabled     = $this->get_option( 'enabled' );
+		$this->title       = $this->get_option( $this->presentation_prefix() . 'title' );
+		$this->description = $this->get_option( $this->presentation_prefix() . 'description' );
+		$this->enabled     = $this->get_option( $this->presentation_prefix() . 'enabled' );
 
 		add_action( 'woocommerce_update_options_payment_gateways_' . $this->id, array( $this, 'process_admin_options' ) );
 	}
@@ -78,6 +118,13 @@ class Gateway extends \WC_Payment_Gateway {
 		}
 		if ( ! in_array( strtoupper( get_woocommerce_currency() ), self::supported_currencies(), true ) ) {
 			return false;
+		}
+		if ( 'bitsnap_cod' === $this->id ) {
+			$order    = wc_get_order( absint( get_query_var( 'order-pay' ) ) );
+			$shipping = $order instanceof \WC_Order ? OrderReader::needs_shipping( $order ) : ( WC()->cart && WC()->cart->needs_shipping() );
+			if ( ! $shipping ) {
+				return false;
+			}
 		}
 		return $this->plugin->credentials()->is_configured();
 	}
@@ -133,6 +180,18 @@ class Gateway extends \WC_Payment_Gateway {
 				'desc_tip'    => true,
 			),
 		);
+
+		if ( 'bitsnap' !== $this->id ) {
+			$manual                                      = 'bitsnap_manual' === $this->id;
+			$this->form_fields['title']['default']       = $manual ? __( 'Traditional bank transfer', 'bitsnap-for-woocommerce' ) : __( 'Cash on delivery', 'bitsnap-for-woocommerce' );
+			$this->form_fields['description']['default'] = $manual ? __( 'Pay by bank transfer using the details on the Bitsnap page.', 'bitsnap-for-woocommerce' ) : __( 'Pay when your order is delivered.', 'bitsnap-for-woocommerce' );
+			unset( $this->form_fields['testmode'] );
+			foreach ( array( 'enabled', 'title', 'description' ) as $key ) {
+				$this->form_fields[ $this->presentation_prefix() . $key ] = $this->form_fields[ $key ];
+				unset( $this->form_fields[ $key ] );
+			}
+			return;
+		}
 
 		$this->form_fields['section_advanced'] = array(
 			'title' => __( 'Advanced', 'bitsnap-for-woocommerce' ),

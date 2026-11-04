@@ -193,6 +193,7 @@ try {
 delete_option( 'wc_installing' );
 delete_transient( 'wc_installing' );
 WC_Install::install();
+WC_Install::create_roles();
 $plugin = Plugin::instance();
 
 update_option( 'woocommerce_currency', 'PLN' );
@@ -201,6 +202,12 @@ update_option( 'woocommerce_prices_include_tax', 'yes' );
 update_option( 'woocommerce_default_country', 'PL' );
 update_option( 'woocommerce_tax_based_on', 'base' );
 update_option( 'woocommerce_shipping_tax_class', '' );
+update_option( 'woocommerce_ship_to_countries', '' );
+$shipping_zone = new WC_Shipping_Zone( 0 );
+if ( empty( $shipping_zone->get_shipping_methods() ) ) {
+	$shipping_zone->add_shipping_method( 'flat_rate' );
+}
+delete_transient( 'wc_shipping_method_count' );
 update_option( 'woocommerce_coupons_enabled', 'yes' );
 global $wpdb;
 $wpdb->query( "DELETE FROM {$wpdb->prefix}woocommerce_tax_rates" );
@@ -273,6 +280,7 @@ smoke_check( 'https://bitsnap.pl' === $gateway->validate_api_base_url_field( 'ap
 
 $product = new WC_Product_Simple();
 $product->set_name( 'Smoke T-shirt' );
+$product->set_status( 'publish' );
 $product->set_regular_price( '49.00' );
 $product->set_sku( 'SMOKE-TS-' . wp_rand( 10000, 99999 ) );
 $product->save();
@@ -476,6 +484,12 @@ smoke_check( 'cancelled' === wc_get_order( $eo->get_id() )->get_status(), 'expir
 
 smoke_section( 'Cash on delivery and manual transfer (D4)' );
 $cod = smoke_order( $product );
+$cod->set_payment_method( 'bitsnap_cod' );
+$cod->save();
+$cod_result = ( new \Bitsnap\WooCommerce\Woo\CodGateway() )->process_payment( $cod->get_id() );
+smoke_check( 'success' === $cod_result['result'], 'COD gateway creates a checkout session' );
+smoke_check( 'CHECKOUT_PAYMENT_METHOD_COD' === smoke_last_request( 'CreateCheckoutSession' )['body']['paymentMethod'] && isset( smoke_last_request( 'CreateCheckoutSession' )['body']['shipping'] ), 'COD gateway sends COD with shipping' );
+$cod = \Bitsnap\WooCommerce\Woo\OrderState::reload( $cod->get_id() );
 $cod->update_meta_data( Meta::ORDER_ID, 'ord_cod' );
 $cod->update_meta_data( Meta::ENVIRONMENT, 'test' );
 $cod->save();
@@ -487,6 +501,12 @@ $cod = wc_get_order( $cod->get_id() );
 smoke_check( 'processing' === $cod->get_status() && '' === (string) $cod->get_meta( Meta::OFFLINE ) && 'pay_cod' === $cod->get_transaction_id() && null !== $cod->get_date_paid(), 'COD paid later is recorded without a status change' );
 
 $man = smoke_order( $product );
+$man->set_payment_method( 'bitsnap_manual' );
+$man->save();
+$manual_result = ( new \Bitsnap\WooCommerce\Woo\ManualGateway() )->process_payment( $man->get_id() );
+smoke_check( 'success' === $manual_result['result'], 'manual gateway creates a checkout session' );
+smoke_check( 'CHECKOUT_PAYMENT_METHOD_MANUAL' === smoke_last_request( 'CreateCheckoutSession' )['body']['paymentMethod'], 'manual gateway sends MANUAL' );
+$man = \Bitsnap\WooCommerce\Woo\OrderState::reload( $man->get_id() );
 $man->update_meta_data( Meta::ORDER_ID, 'ord_man' );
 $man->update_meta_data( Meta::ENVIRONMENT, 'test' );
 $man->save();
@@ -494,6 +514,63 @@ smoke_deliver( smoke_event( $man, 'TRANSACTION_CREATED', 'evt_m1', 'PAYMENT_STAT
 smoke_check( 'on-hold' === wc_get_order( $man->get_id() )->get_status(), 'manual transfer choice puts the order on hold' );
 smoke_deliver( smoke_event( $man, 'TRANSACTION_SUCCESS', 'evt_m2', 'PAYMENT_STATE_PAID', 'manual', array(), array(), 'pay_man' ) );
 smoke_check( wc_get_order( $man->get_id() )->is_paid(), 'a confirmed manual transfer completes the order' );
+
+
+
+smoke_check( 'no' === ( new \Bitsnap\WooCommerce\Woo\CodGateway() )->enabled && 'no' === ( new \Bitsnap\WooCommerce\Woo\ManualGateway() )->enabled, 'manual and COD are disabled by default' );
+$shared = get_option( Settings::OPTION );
+$shared['bitsnap_cod_enabled'] = 'yes';
+$shared['bitsnap_manual_enabled'] = 'yes';
+update_option( Settings::OPTION, $shared );
+$cod_gateway = new \Bitsnap\WooCommerce\Woo\CodGateway();
+$manual_gateway = new \Bitsnap\WooCommerce\Woo\ManualGateway();
+smoke_check( $cod_gateway->get_option_key() === $gateway->get_option_key() && $manual_gateway->get_option_key() === $gateway->get_option_key(), 'all gateways share one settings option' );
+WC()->initialize_session();
+WC()->initialize_cart();
+WC()->cart->empty_cart();
+$virtual = new WC_Product_Simple();
+$virtual->set_name( 'Virtual smoke' );
+$virtual->set_status( 'publish' );
+$virtual->set_virtual( true );
+$virtual->set_regular_price( '10' );
+$virtual->save();
+smoke_check( false !== WC()->cart->add_to_cart( $virtual->get_id() ), 'virtual product enters the cart' );
+smoke_check( ! $cod_gateway->is_available(), 'COD hidden for virtual-only cart' );
+WC()->cart->empty_cart();
+smoke_check( false !== WC()->cart->add_to_cart( $product->get_id() ), 'physical product enters the cart' );
+smoke_check( $cod_gateway->is_available(), 'COD available for shipping cart', 'enabled=' . $cod_gateway->enabled . ', count=' . WC()->cart->get_cart_contents_count() . ', shipping=' . (int) WC()->cart->needs_shipping() );
+WC()->cart->empty_cart();
+
+
+// Backend method refusal is presented as a checkout error without exposing its body.
+$GLOBALS['bitsnap_mock']['CreateCheckoutSession'] = array( 400, array( 'code' => 'invalid_argument', 'message' => '[invalid_request] COD not configured' ) );
+$refused = smoke_order( $product );
+$refused->set_payment_method( 'bitsnap_cod' );
+$refused->save();
+wc_clear_notices();
+$refused_result = $cod_gateway->process_payment( $refused->get_id() );
+smoke_check( 'failure' === $refused_result['result'] && wc_notice_count( 'error' ) > 0, 'backend method refusal gives buyer a checkout error' );
+$GLOBALS['bitsnap_mock']['CreateCheckoutSession'] = array( 200, array( 'url' => 'https://bitsnap.pl/pay/smoke_1', 'orderId' => 'ord_smoke_1', 'environment' => 'ENVIRONMENT_TEST', 'expiresAt' => gmdate( 'c', time() + 3600 ) ) );
+
+smoke_section( 'Durable event identity and legacy fallback' );
+foreach ( array( true, false ) as $durable ) {
+	$dedupe = smoke_order( $product );
+	$dedupe->update_meta_data( Meta::ORDER_ID, 'ord_dedupe' );
+	$dedupe->update_meta_data( Meta::ENVIRONMENT, 'test' );
+	$dedupe->update_meta_data( Meta::EVENTS, array( 'ord_dedupe', 'previous_event' ) );
+	$dedupe->save();
+	$extra = $durable ? array( 'eventId' => 'evt_created' ) : array();
+	$created = smoke_event( $dedupe, 'TRANSACTION_CREATED', 'ord_dedupe', 'AWAITING_OFFLINE', 'manual', $extra );
+	smoke_check( array( 200, 'ok' ) === smoke_deliver( $created ), 'CREATED applies despite stored bare order id' );
+	$extra = $durable ? array( 'eventId' => 'evt_paid' ) : array();
+	$paid = smoke_event( $dedupe, 'TRANSACTION_SUCCESS', 'ord_dedupe', 'PAID', 'manual', $extra );
+	smoke_check( array( 200, 'ok' ) === smoke_deliver( $paid ) && wc_get_order( $dedupe->get_id() )->is_paid(), 'SUCCESS after CREATED applies for same order id' );
+	smoke_check( array( 200, 'duplicate' ) === smoke_deliver( $paid ), 'same durable or fallback identity applies once' );
+}
+
+
+$legacy_event = smoke_event( $dedupe, 'TRANSACTION_SUCCESS', 'previous_event', 'PAID' );
+smoke_check( array( 200, 'duplicate' ) === smoke_deliver( $legacy_event ), 'already-stored unique legacy identity remains deduplicated' );
 
 smoke_section( 'Invoice, payment attempts and concurrent delivery' );
 $invoice = json_decode( smoke_event( $order, 'INVOICE_ISSUED', 'evt_invoice', 'PAYMENT_STATE_PAID' ), true );
@@ -595,6 +672,11 @@ foreach ( wc_get_order( $order->get_id() )->get_refunds() as $retry_refund ) {
 $GLOBALS['bitsnap_mock']['CreateRefund'] = array( 200, array( 'refund' => array( 'id' => 'ref_m', 'status' => 'REFUND_STATUS_MANUAL_REQUIRED' ) ) );
 $manual = wc_create_refund( array( 'order_id' => $order->get_id(), 'amount' => '1.00', 'refund_payment' => true ) );
 smoke_check( is_wp_error( $manual ) && false !== strpos( $manual->get_error_message(), 'Refund manually' ), 'MANUAL_REQUIRED becomes a clear WP_Error', is_wp_error( $manual ) ? $manual->get_error_message() : 'no error' );
+foreach ( array( $cod, $man ) as $offline_order ) {
+	$offline_refund = wc_create_refund( array( 'order_id' => $offline_order->get_id(), 'amount' => '1.00', 'refund_payment' => true ) );
+	smoke_check( is_wp_error( $offline_refund ) && false !== strpos( $offline_refund->get_error_message(), 'Refund manually' ), $offline_order->get_payment_method() . ' follows MANUAL_REQUIRED backend response' );
+}
+
 smoke_check( $before + 1 === count( wc_get_order( $order->get_id() )->get_refunds() ), 'no WooCommerce refund is created when Bitsnap cannot refund' );
 $GLOBALS['bitsnap_mock']['CreateRefund'] = array( 409, array( 'code' => 'failed_precondition', 'message' => '[refund_not_supported] x', 'details' => array( array( 'debug' => array( 'reason' => 'refund_not_supported' ) ) ) ) );
 $unsupported = wc_create_refund( array( 'order_id' => $order->get_id(), 'amount' => '1.00', 'refund_payment' => true ) );
@@ -661,6 +743,7 @@ smoke_check( 'pending' === wc_get_order( $ro2->get_id() )->get_status(), 'a stil
 // Reconcile: an order pending for 30 minutes.
 $GLOBALS['bitsnap_state'] = 'PAYMENT_STATE_PAID';
 $rc = smoke_order( $product );
+$rc->set_payment_method( 'bitsnap_manual' );
 $rc->update_meta_data( Meta::ORDER_ID, 'ord_rc' );
 $rc->update_meta_data( Meta::ENVIRONMENT, 'test' );
 $rc->set_date_created( time() - 1800 );
@@ -714,7 +797,7 @@ $registered = false;
 do_action( 'woocommerce_blocks_loaded' );
 try {
 	$registry   = \Automattic\WooCommerce\Blocks\Package::container()->get( \Automattic\WooCommerce\Blocks\Payments\PaymentMethodRegistry::class );
-	$registered = $registry->is_registered( 'bitsnap' );
+	$registered = $registry->is_registered( 'bitsnap' ) && $registry->is_registered( 'bitsnap_manual' ) && $registry->is_registered( 'bitsnap_cod' );
 } catch ( \Throwable $e ) {
 	echo '  note: ' . $e->getMessage() . "\n";
 }

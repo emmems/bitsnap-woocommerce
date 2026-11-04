@@ -10,53 +10,64 @@ import { decodeEntities } from '@wordpress/html-entities';
 import { __ } from '@wordpress/i18n';
 import { createElement } from '@wordpress/element';
 
-const settings = getSetting( 'bitsnap_data', {} );
+for ( const name of [ 'bitsnap', 'bitsnap_manual', 'bitsnap_cod' ] ) {
+	const settings = getSetting( name + '_data', {} );
 
-const title = decodeEntities(
-	settings.title ||
-		__( 'Online payment (Bitsnap)', 'bitsnap-for-woocommerce' )
-);
-
-const Label = ( props ) => {
-	const { PaymentMethodLabel } = props.components;
-	return createElement( PaymentMethodLabel, { text: title } );
-};
-
-const Content = () => {
-	const description = decodeEntities( settings.description || '' );
-	return createElement(
-		'div',
-		{ className: 'wc-block-components-bitsnap-description' },
-		description,
-		settings.testMode
-			? createElement(
-					'p',
-					{ className: 'wc-block-components-bitsnap-test-mode' },
-					__(
-						'Test mode is enabled. No real money is charged.',
-						'bitsnap-for-woocommerce'
-					)
-			  )
-			: null
+	const title = decodeEntities(
+		settings.title ||
+			__( 'Online payment (Bitsnap)', 'bitsnap-for-woocommerce' )
 	);
-};
 
-registerPaymentMethod( {
-	name: 'bitsnap',
-	label: createElement( Label, null ),
-	content: createElement( Content, null ),
-	edit: createElement( Content, null ),
-	// Hide the method when the cart currency is not one the gateway supports.
-	canMakePayment: ( args ) => {
-		const currency =
-			args && args.cartTotals ? args.cartTotals.currency_code : null;
-		if ( ! currency || ! Array.isArray( settings.supportedCurrencies ) ) {
-			return true;
-		}
-		return settings.supportedCurrencies.includes( currency );
-	},
-	ariaLabel: title,
-	supports: {
-		features: settings.supports || [ 'products', 'refunds' ],
-	},
-} );
+	const Label = ( props ) => {
+		const { PaymentMethodLabel } = props.components;
+		return createElement( PaymentMethodLabel, { text: title } );
+	};
+
+	const Content = () => {
+		const description = decodeEntities( settings.description || '' );
+		return createElement(
+			'div',
+			{ className: 'wc-block-components-bitsnap-description' },
+			description,
+			settings.testMode
+				? createElement(
+						'p',
+						{ className: 'wc-block-components-bitsnap-test-mode' },
+						__(
+							'Test mode is enabled. No real money is charged.',
+							'bitsnap-for-woocommerce'
+						)
+				  )
+				: null
+		);
+	};
+
+	registerPaymentMethod( {
+		name,
+		label: createElement( Label, null ),
+		content: createElement( Content, null ),
+		edit: createElement( Content, null ),
+		// Hide the method when the cart currency is not one the gateway supports.
+		canMakePayment: ( args ) => {
+			if ( ! settings.enabled ) {
+				return false;
+			}
+			if ( name === 'bitsnap_cod' && ! args?.cartNeedsShipping ) {
+				return false;
+			}
+			const currency =
+				args && args.cartTotals ? args.cartTotals.currency_code : null;
+			if (
+				! currency ||
+				! Array.isArray( settings.supportedCurrencies )
+			) {
+				return true;
+			}
+			return settings.supportedCurrencies.includes( currency );
+		},
+		ariaLabel: title,
+		supports: {
+			features: settings.supports || [ 'products', 'refunds' ],
+		},
+	} );
+}

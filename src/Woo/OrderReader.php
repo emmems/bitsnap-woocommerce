@@ -21,6 +21,23 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class OrderReader {
 
 	/**
+	 * Whether an order contains a product requiring shipping, including local pickup.
+	 *
+	 * @param \WC_Order $order Order to inspect.
+	 * @return bool
+	 */
+	public static function needs_shipping( \WC_Order $order ): bool {
+		foreach ( $order->get_items() as $item ) {
+			$product = $item->get_product();
+			if ( $product && $product->needs_shipping() ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+
+	/**
 	 * Builds the snapshot described in {@see \Bitsnap\WooCommerce\Mapping\CheckoutSessionBuilder}.
 	 *
 	 * @param \WC_Order $order       The order.

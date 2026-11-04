@@ -118,7 +118,7 @@ final class Reconciler {
 		$orders = wc_get_orders(
 			array(
 				'status'         => array( 'pending' ),
-				'payment_method' => 'bitsnap',
+				'payment_method' => Gateway::IDS,
 				'limit'          => self::BATCH,
 				'page'           => $page,
 				'orderby'        => 'date',
@@ -160,7 +160,7 @@ final class Reconciler {
 		$old  = wc_get_orders(
 			array(
 				'status'         => array( 'pending' ),
-				'payment_method' => 'bitsnap',
+				'payment_method' => Gateway::IDS,
 				'limit'          => self::SCAN,
 				'orderby'        => 'date',
 				'order'          => 'DESC',

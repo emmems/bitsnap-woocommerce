@@ -97,7 +97,7 @@ final class Refunder {
 		}
 		try {
 			$order = OrderState::reload( $order_id );
-			if ( ! $order instanceof \WC_Order ) {
+			if ( ! $order instanceof \WC_Order || ! in_array( $order->get_payment_method(), Gateway::IDS, true ) ) {
 				return new \WP_Error( 'bitsnap_refund_order', __( 'The order was not found.', 'bitsnap-for-woocommerce' ) );
 			}
 

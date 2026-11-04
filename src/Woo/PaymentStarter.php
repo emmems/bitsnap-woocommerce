@@ -84,6 +84,16 @@ final class PaymentStarter {
 				$this->logger->info( 'Order ' . $order->get_id() . ': closed a rounding difference of ' . $built['delta'] . ' minor units.' );
 			}
 
+			if ( 'bitsnap_cod' === $order->get_payment_method() && ! isset( $built['request']['shipping'] ) && OrderReader::needs_shipping( $order ) ) {
+				$built['request']['shipping'] = array(
+					'name'  => __( 'Shipping', 'bitsnap-for-woocommerce' ),
+					'price' => array(
+						'amount'   => 0,
+						'currency' => $order->get_currency(),
+					),
+				);
+			}
+			$built['request']['paymentMethod'] = Gateway::payment_method( $order->get_payment_method() );
 			/**
 			 * Filters the `CreateCheckoutSession` request.
 			 *

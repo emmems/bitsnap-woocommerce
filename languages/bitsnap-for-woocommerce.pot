@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-11-04T05:43:02+00:00\n"
+"POT-Creation-Date: 2026-11-04T07:34:56+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: bitsnap-for-woocommerce\n"
@@ -31,7 +31,7 @@ msgstr ""
 
 #. Author of the plugin
 #: bitsnap-for-woocommerce.php
-#: src/Woo/Gateway.php:39
+#: src/Woo/Gateway.php:79
 msgid "Bitsnap"
 msgstr ""
 
@@ -68,20 +68,20 @@ msgstr ""
 msgid "Connected to %1$s (%2$s). The webhook is registered and its secret is saved."
 msgstr ""
 
-#: src/Admin/OAuthActions.php:164
+#: src/Admin/OAuthActions.php:170
 msgid "Disconnected this store from Bitsnap, but Bitsnap did not confirm that the webhook was deleted and access revoked. Check \"Connected apps\" in your Bitsnap settings."
 msgstr ""
 
-#: src/Admin/OAuthActions.php:166
+#: src/Admin/OAuthActions.php:172
 msgid "Disconnected from Bitsnap."
 msgstr ""
 
-#: src/Admin/OAuthActions.php:179
+#: src/Admin/OAuthActions.php:185
 #: src/Admin/RegisterWebhook.php:71
 msgid "Invalid request."
 msgstr ""
 
-#: src/Admin/OAuthActions.php:191
+#: src/Admin/OAuthActions.php:197
 #: src/Admin/RegisterWebhook.php:75
 msgid "You are not allowed to do this."
 msgstr ""
@@ -138,7 +138,7 @@ msgstr ""
 msgid "The %s webhook was registered in Bitsnap and its secret was saved."
 msgstr ""
 
-#: src/Plugin.php:117
+#: src/Plugin.php:122
 msgid "Settings"
 msgstr ""
 
@@ -206,298 +206,330 @@ msgstr ""
 msgid "Bitsnap returned an error: %s"
 msgstr ""
 
-#: src/Woo/Gateway.php:40
+#: src/Woo/Gateway.php:79
+msgid "Bitsnap: traditional bank transfer"
+msgstr ""
+
+#: src/Woo/Gateway.php:79
+msgid "Bitsnap: cash on delivery"
+msgstr ""
+
+#: src/Woo/Gateway.php:80
 msgid "Accept BLIK, cards, bank transfers and more through Bitsnap. The buyer pays on a secure Bitsnap page."
 msgstr ""
 
-#: src/Woo/Gateway.php:93
+#: src/Woo/Gateway.php:140
 msgid "TEST MODE: no real money is charged."
 msgstr ""
 
-#: src/Woo/Gateway.php:108
+#: src/Woo/Gateway.php:155
 msgid "Enable/Disable"
 msgstr ""
 
-#: src/Woo/Gateway.php:110
+#: src/Woo/Gateway.php:157
 msgid "Enable Bitsnap"
 msgstr ""
 
-#: src/Woo/Gateway.php:114
+#: src/Woo/Gateway.php:161
 msgid "Title"
 msgstr ""
 
-#: src/Woo/Gateway.php:116
+#: src/Woo/Gateway.php:163
 msgid "What the buyer sees as the payment method name at checkout."
 msgstr ""
 
-#: src/Woo/Gateway.php:117
+#: src/Woo/Gateway.php:164
 msgid "Online payment (BLIK, card, bank transfer)"
 msgstr ""
 
-#: src/Woo/Gateway.php:121
+#: src/Woo/Gateway.php:168
 msgid "Description"
 msgstr ""
 
-#: src/Woo/Gateway.php:123
+#: src/Woo/Gateway.php:170
 msgid "Text under the payment method name at checkout."
 msgstr ""
 
-#: src/Woo/Gateway.php:124
+#: src/Woo/Gateway.php:171
 msgid "You will be redirected to a secure Bitsnap page to pay."
 msgstr ""
 
-#: src/Woo/Gateway.php:128
+#: src/Woo/Gateway.php:175
 msgid "Test mode"
 msgstr ""
 
-#: src/Woo/Gateway.php:130
+#: src/Woo/Gateway.php:177
 msgid "Use the test API key. No real money moves."
 msgstr ""
 
-#: src/Woo/Gateway.php:131
+#: src/Woo/Gateway.php:178
 msgid "Switch it off when you are ready to take real payments."
 msgstr ""
 
-#: src/Woo/Gateway.php:138
+#: src/Woo/Gateway.php:186
+msgid "Traditional bank transfer"
+msgstr ""
+
+#: src/Woo/Gateway.php:186
+msgid "Cash on delivery"
+msgstr ""
+
+#: src/Woo/Gateway.php:187
+msgid "Pay by bank transfer using the details on the Bitsnap page."
+msgstr ""
+
+#: src/Woo/Gateway.php:187
+msgid "Pay when your order is delivered."
+msgstr ""
+
+#: src/Woo/Gateway.php:197
 msgid "Advanced"
 msgstr ""
 
-#: src/Woo/Gateway.php:146
+#: src/Woo/Gateway.php:205
 msgid "Test credentials"
 msgstr ""
 
-#: src/Woo/Gateway.php:146
+#: src/Woo/Gateway.php:205
 msgid "Live credentials"
 msgstr ""
 
-#: src/Woo/Gateway.php:151
+#: src/Woo/Gateway.php:210
 msgid "Test API key"
 msgstr ""
 
-#: src/Woo/Gateway.php:151
+#: src/Woo/Gateway.php:210
 msgid "Live API key"
 msgstr ""
 
-#: src/Woo/Gateway.php:154
+#: src/Woo/Gateway.php:213
 msgid "Starts with bs_test_. Needs the checkout:create, orders:read and refunds:write permissions, and customers:pii to send buyer details."
 msgstr ""
 
-#: src/Woo/Gateway.php:155
+#: src/Woo/Gateway.php:214
 msgid "Starts with bs_live_. Needs the same permissions as the test key."
 msgstr ""
 
-#: src/Woo/Gateway.php:159
+#: src/Woo/Gateway.php:218
 msgid "Test webhook secret"
 msgstr ""
 
-#: src/Woo/Gateway.php:159
+#: src/Woo/Gateway.php:218
 msgid "Live webhook secret"
 msgstr ""
 
-#: src/Woo/Gateway.php:161
+#: src/Woo/Gateway.php:220
 msgid "Starts with whsec_. Filled in for you by \"Register webhook\", or paste the secret of a webhook you created in Bitsnap."
 msgstr ""
 
-#: src/Woo/Gateway.php:167
+#: src/Woo/Gateway.php:226
 msgid "API base URL"
 msgstr ""
 
-#: src/Woo/Gateway.php:169
+#: src/Woo/Gateway.php:228
 msgid "Leave as it is unless Bitsnap support tells you to change it."
 msgstr ""
 
-#: src/Woo/Gateway.php:174
+#: src/Woo/Gateway.php:233
 msgid "Debug log"
 msgstr ""
 
-#: src/Woo/Gateway.php:176
+#: src/Woo/Gateway.php:235
 msgid "Log API calls and webhooks"
 msgstr ""
 
 #. translators: %s: link to the WooCommerce logs page.
-#: src/Woo/Gateway.php:179
+#: src/Woo/Gateway.php:238
 #, php-format
 msgid "Writes to WooCommerce > Status > Logs (source \"bitsnap\"). Keys and secrets are removed from the log. %s"
 msgstr ""
 
-#: src/Woo/Gateway.php:180
+#: src/Woo/Gateway.php:239
 msgid "Open logs"
 msgstr ""
 
 #. translators: 1: Bitsnap project name, 2: environment (test or live).
-#: src/Woo/Gateway.php:219
+#: src/Woo/Gateway.php:278
 #, php-format
 msgid "Connected to %1$s (%2$s)."
 msgstr ""
 
-#: src/Woo/Gateway.php:222
+#: src/Woo/Gateway.php:281
 msgid "Disconnect"
 msgstr ""
 
 #. translators: %s: webhook URL.
-#: src/Woo/Gateway.php:224
+#: src/Woo/Gateway.php:283
 #, php-format
 msgid "Webhook URL: %s. It was registered in Bitsnap when you connected. While connected, the API key below is not used."
 msgstr ""
 
-#: src/Woo/Gateway.php:250
+#: src/Woo/Gateway.php:309
 msgid "Connect with Bitsnap"
 msgstr ""
 
 #. translators: 1: webhook URL, 2: opening link tag for the Register webhook button, 3: closing link tag.
-#: src/Woo/Gateway.php:252
+#: src/Woo/Gateway.php:311
 #, php-format
 msgid "Webhook URL: %1$s. Or enter an API key below and save it, then %2$sRegister webhook%3$s to create the webhook in Bitsnap and store its secret."
 msgstr ""
 
-#: src/Woo/Gateway.php:282
+#: src/Woo/Gateway.php:341
 msgid "Saved, but it cannot be read. Enter it again."
 msgstr ""
 
-#: src/Woo/Gateway.php:284
+#: src/Woo/Gateway.php:343
 msgid "Saved. Enter a new value to replace it."
 msgstr ""
 
 #. translators: %s: the prefix the value must start with.
-#: src/Woo/Gateway.php:331
+#: src/Woo/Gateway.php:390
 #, php-format
 msgid "The value was not saved: it must start with %s."
 msgstr ""
 
-#: src/Woo/Gateway.php:361
+#: src/Woo/Gateway.php:409
+msgid "Use a public HTTPS Bitsnap API URL."
+msgstr ""
+
+#: src/Woo/Gateway.php:424
 msgid "The order was not found. Please try again."
 msgstr ""
 
 #. translators: %s: reason the payment could not be started.
-#: src/Woo/Gateway.php:371
+#: src/Woo/Gateway.php:434
 #, php-format
 msgid "Bitsnap could not start the payment: %s"
 msgstr ""
 
-#: src/Woo/Gateway.php:375
+#: src/Woo/Gateway.php:438
 msgid "We could not start the payment. Please try again or choose another payment method."
 msgstr ""
 
-#: src/Woo/OrderReader.php:92
+#: src/Woo/OrderReader.php:109
 msgid "Rounding"
 msgstr ""
 
 #. translators: %d: number of order lines folded into one line.
-#: src/Woo/OrderReader.php:94
+#: src/Woo/OrderReader.php:111
 #, php-format
 msgid "Other items (%d)"
 msgstr ""
 
 #. translators: %s: URL of the invoice issued by Bitsnap.
-#: src/Woo/OrderUpdater.php:104
+#: src/Woo/OrderUpdater.php:109
 #, php-format
 msgid "Bitsnap invoice issued: %s"
 msgstr ""
 
 #. translators: %s: where the refund was made, for example "dashboard".
-#: src/Woo/OrderUpdater.php:182
+#: src/Woo/OrderUpdater.php:202
 #, php-format
 msgid "Refunded in Bitsnap (%s)"
 msgstr ""
 
 #. translators: 1: refund amount, 2: Bitsnap refund id, 3: error message.
-#: src/Woo/OrderUpdater.php:199
+#: src/Woo/OrderUpdater.php:232
 #, php-format
 msgid "Bitsnap refunded %1$s (refund %2$s), but WooCommerce could not record it: %3$s. Record the refund manually."
 msgstr ""
 
 #. translators: 1: refund amount, 2: Bitsnap refund id.
-#: src/Woo/OrderUpdater.php:212
+#: src/Woo/OrderUpdater.php:245
 #, php-format
 msgid "Refund of %1$s made in Bitsnap was recorded (refund %2$s). Stock was not restored."
 msgstr ""
 
 #. translators: 1: payment method such as BLIK, 2: transaction id.
-#: src/Woo/OrderUpdater.php:235
+#: src/Woo/OrderUpdater.php:268
 #, php-format
 msgid "Bitsnap payment received (%1$s, transaction %2$s)."
 msgstr ""
 
 #. translators: 1: payment method, 2: transaction id.
-#: src/Woo/OrderUpdater.php:238
+#: src/Woo/OrderUpdater.php:271
 #, php-format
 msgid "Bitsnap confirmed the payment (%1$s, transaction %2$s)."
 msgstr ""
 
-#: src/Woo/OrderUpdater.php:240
+#: src/Woo/OrderUpdater.php:273
 msgid "Bitsnap reported that the payment failed."
 msgstr ""
 
-#: src/Woo/OrderUpdater.php:242
+#: src/Woo/OrderUpdater.php:275
 msgid "The Bitsnap payment session expired without a payment."
 msgstr ""
 
-#: src/Woo/OrderUpdater.php:244
+#: src/Woo/OrderUpdater.php:277
 msgid "The buyer chose payment on delivery in Bitsnap. The order is processing; collect the payment on delivery."
 msgstr ""
 
-#: src/Woo/OrderUpdater.php:246
+#: src/Woo/OrderUpdater.php:279
 msgid "The buyer chose a manual transfer in Bitsnap. The order is on hold until Bitsnap confirms the transfer."
 msgstr ""
 
 #. translators: 1: refund amount, 2: Bitsnap refund id.
-#: src/Woo/OrderUpdater.php:249
+#: src/Woo/OrderUpdater.php:282
 #, php-format
 msgid "A refund of %1$s in Bitsnap failed (refund %2$s). Check it in the Bitsnap dashboard."
 msgstr ""
 
 #. translators: %s: Bitsnap refund id.
-#: src/Woo/OrderUpdater.php:252
+#: src/Woo/OrderUpdater.php:285
 #, php-format
 msgid "Bitsnap reported a refund (%s) without an amount. Record it manually if money was returned."
 msgstr ""
 
+#: src/Woo/PaymentStarter.php:89
+msgid "Shipping"
+msgstr ""
+
 #. translators: 1: Bitsnap order id, 2: environment (test or live).
-#: src/Woo/PaymentStarter.php:134
+#: src/Woo/PaymentStarter.php:154
 #, php-format
 msgid "Bitsnap payment started (order %1$s, %2$s mode). The buyer was sent to the payment page."
 msgstr ""
 
-#: src/Woo/Reconciler.php:177
+#: src/Woo/Reconciler.php:180
 msgid "Bitsnap: this order is still unpaid after 48 hours. The plugin stopped checking it automatically."
 msgstr ""
 
-#: src/Woo/Refunder.php:74
+#: src/Woo/Refunder.php:101
 msgid "The order was not found."
 msgstr ""
 
-#: src/Woo/Refunder.php:80
+#: src/Woo/Refunder.php:110
 msgid "This order was not paid through Bitsnap, so Bitsnap cannot refund it."
 msgstr ""
 
 #. translators: %s: environment, test or live.
-#: src/Woo/Refunder.php:87
+#: src/Woo/Refunder.php:117
 #, php-format
 msgid "There is no %s API key in the gateway settings, so the refund cannot be sent to Bitsnap."
 msgstr ""
 
-#: src/Woo/Refunder.php:95
+#: src/Woo/Refunder.php:125
 msgid "The refund amount must be greater than zero."
 msgstr ""
 
-#: src/Woo/Refunder.php:125
+#: src/Woo/Refunder.php:184
 msgid "This payment method cannot be refunded through Bitsnap (cash on delivery or a manual transfer). Return the money yourself, then record it with \"Refund manually\"."
 msgstr ""
 
-#: src/Woo/Refunder.php:129
+#: src/Woo/Refunder.php:188
 msgid "Bitsnap could not make the refund. Check the payment in the Bitsnap dashboard."
 msgstr ""
 
 #. translators: 1: amount, 2: Bitsnap refund id, 3: refund status such as SUCCEEDED or PENDING.
-#: src/Woo/Refunder.php:139
+#: src/Woo/Refunder.php:207
 #, php-format
 msgid "Refund of %1$s sent to Bitsnap (refund %2$s, status %3$s)."
 msgstr ""
 
-#: assets/js/blocks/index.js:17
+#: assets/js/blocks/index.js:18
 msgid "Online payment (Bitsnap)"
 msgstr ""
 
-#: assets/js/blocks/index.js:35
+#: assets/js/blocks/index.js:36
 msgid "Test mode is enabled. No real money is charged."
 msgstr ""
