@@ -24,6 +24,7 @@
 		"@wordpress/env": "^10.0.0",
 		"@wordpress/html-entities": "^5.0.0",
 		"@wordpress/i18n": "^7.0.0",
-		"@wordpress/scripts": "^30.0.0"
+		"@wordpress/scripts": "^30.0.0",
+		"typescript": "5.9.3"
 	}
 }

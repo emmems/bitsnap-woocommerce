@@ -50,6 +50,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # The plugin bundles PHP libraries (the update checker) from vendor/.
+      - name: Install PHP dependencies
+        run: composer install --no-dev --no-interaction --prefer-dist --no-progress
       - run: npm run build
       - name: Start WordPress (retry a cold database startup once)
         run: npm run env:start || npm run env:start
