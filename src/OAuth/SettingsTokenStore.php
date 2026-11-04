@@ -57,17 +57,18 @@ final class SettingsTokenStore implements TokenStore {
 		if ( $fresh ) {
 			$this->settings->reload();
 		}
-		$access  = $this->settings->get_secret( self::key( $environment, 'access' ) );
-		$refresh = $this->settings->get_secret( self::key( $environment, 'refresh' ) );
+		$all     = $this->settings->all();
+		$access  = $this->settings->secrets()->decrypt( (string) ( $all[ self::key( $environment, 'access' ) ] ?? '' ) ) ?? '';
+		$refresh = $this->settings->secrets()->decrypt( (string) ( $all[ self::key( $environment, 'refresh' ) ] ?? '' ) ) ?? '';
 		if ( '' === $access && '' === $refresh ) {
 			return array();
 		}
 		return array(
 			'access_token'  => $access,
 			'refresh_token' => $refresh,
-			'expires_at'    => (int) $this->settings->get( self::key( $environment, 'expires' ), '0' ),
-			'project_id'    => $this->settings->get( self::key( $environment, 'project_id' ) ),
-			'project_name'  => $this->settings->get( self::key( $environment, 'project_name' ) ),
+			'expires_at'    => (int) ( $all[ self::key( $environment, 'expires' ) ] ?? 0 ),
+			'project_id'    => ( $all[ self::key( $environment, 'project_id' ) ] ?? '' ),
+			'project_name'  => ( $all[ self::key( $environment, 'project_name' ) ] ?? '' ),
 			'environment'   => $environment,
 		);
 	}

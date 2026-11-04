@@ -17,6 +17,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class TransientStorage implements Storage {
 
 	/**
+	 * Owned refresh locks.
+	 *
+	 * @var array<string,\Bitsnap\WooCommerce\Support\Lock>
+	 */
+	private $locks = array();
+
+	/**
 	 * Reads a value.
 	 *
 	 * @param string $key Key.
@@ -40,9 +47,8 @@ final class TransientStorage implements Storage {
 	}
 
 	/**
-	 * Writes a value only when the key is free. With an external object cache this is one atomic
-	 * `wp_cache_add`; without one, transients live in the options table and the check is best effort.
-	 * {@see Service::refresh()} therefore re-reads the stored tokens after it gets the lock.
+	 * Acquires an atomic database lease. Refresh and every token writer share the
+	 * same per-environment lock, with ownership-checked release.
 	 *
 	 * @param string $key   Key.
 	 * @param mixed  $value Value.
@@ -50,13 +56,12 @@ final class TransientStorage implements Storage {
 	 * @return bool
 	 */
 	public function add( string $key, $value, int $ttl ): bool {
-		if ( wp_using_ext_object_cache() ) {
-			return wp_cache_add( $key, $value, 'transient', $ttl );
-		}
-		if ( false !== get_transient( $key ) ) {
+		try {
+			$this->locks[ $key ] = new \Bitsnap\WooCommerce\Support\Lock( str_replace( 'bitsnap_oauth_refresh_', 'tokens:', $key ), $ttl );
+			return true;
+		} catch ( \RuntimeException $e ) {
 			return false;
 		}
-		return set_transient( $key, $value, $ttl );
 	}
 
 	/**
@@ -66,6 +71,10 @@ final class TransientStorage implements Storage {
 	 * @return void
 	 */
 	public function delete( string $key ): void {
+		if ( isset( $this->locks[ $key ] ) ) {
+			$this->locks[ $key ]->release();
+			unset( $this->locks[ $key ] );
+		}
 		delete_transient( $key );
 	}
 }

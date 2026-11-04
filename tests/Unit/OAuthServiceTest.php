@@ -446,6 +446,24 @@ final class OAuthServiceTest extends TestCase {
 		self::assertTrue( $this->service->connected( 'live' ) );
 	}
 
+	public function test_invalid_grant_does_not_clear_a_newer_token_pair(): void {
+		$this->seed( 'test', 'bsat_old', 'rt_old', $this->now );
+		$this->http->queue( '/oauth/token', 400, '{"error":"invalid_grant"}' );
+		$this->http->before = function ( $path ) {
+			if ( '/oauth/token' === $path ) {
+				$this->seed( 'test', 'bsat_winner', 'rt_winner', $this->now + 3500 );
+			}
+		};
+		try {
+			$this->service->access_token( 'test' );
+			self::fail( 'Expected invalid_grant' );
+		} catch ( OAuthException $e ) {
+			self::assertSame( 'invalid_grant', $e->error_name() );
+		}
+		self::assertSame( 'rt_winner', $this->tokens->get( 'test' )['refresh_token'] );
+		self::assertSame( 'bsat_winner', $this->service->access_token( 'test' ) );
+	}
+
 	public function test_a_temporary_failure_keeps_the_tokens(): void {
 		$this->seed( 'test', 'bsat_t', 'rt_t', $this->now );
 		foreach ( array( array( 0, 'network' ), array( 502, 'server_error' ) ) as $case ) {

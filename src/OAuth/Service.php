@@ -30,7 +30,7 @@ final class Service {
 	/**
 	 * Lifetime of the refresh lock, in seconds. It outlives one HTTP call with its timeout.
 	 */
-	private const LOCK_TTL = 30;
+	private const LOCK_TTL = 180;
 
 	/**
 	 * How many times the loser of the refresh lock looks again.
@@ -307,11 +307,25 @@ final class Service {
 	 *
 	 * @param string $environment 'test' or 'live'.
 	 * @return bool Whether Bitsnap confirmed the revocation.
+	 * @throws OAuthException When another token operation remains busy.
 	 */
 	public function disconnect( string $environment ): bool {
-		$revoked = $this->revoke( $environment );
-		$this->tokens->clear( $environment );
-		return $revoked;
+		$lock = 'bitsnap_oauth_refresh_' . $environment;
+		for ( $i = 0; $i < self::LOCK_ATTEMPTS; ++$i ) {
+			if ( $this->storage->add( $lock, 1, self::LOCK_TTL ) ) {
+				try {
+					return $this->revoke( $environment );
+				} finally {
+					try {
+						$this->tokens->clear( $environment );
+					} finally {
+						$this->storage->delete( $lock );
+					}
+				}
+			}
+			call_user_func( $this->sleep, self::LOCK_WAIT );
+		}
+		throw new OAuthException( 'busy' );
 	}
 
 	/**
@@ -353,7 +367,10 @@ final class Service {
 		} catch ( OAuthException $e ) {
 			if ( 'invalid_grant' === $e->error_name() ) {
 				// The grant was revoked or the refresh token already used: connecting again is the only way out.
-				$this->tokens->clear( $environment );
+				$current = $this->tokens->get( $environment, true );
+				if ( ( $current['refresh_token'] ?? '' ) === $set['refresh_token'] ) {
+					$this->tokens->clear( $environment );
+				}
 			}
 			throw $e;
 		}

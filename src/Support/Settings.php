@@ -59,7 +59,19 @@ final class Settings {
 	 */
 	public function all(): array {
 		$value = get_option( self::OPTION, array() );
-		return is_array( $value ) ? $value : array();
+		$value = is_array( $value ) ? $value : array();
+		foreach ( array( 'test', 'live' ) as $environment ) {
+			$tokens = get_option( 'bitsnap_oauth_tokens_' . $environment, null );
+			if ( is_array( $tokens ) ) {
+				foreach ( array_keys( $value ) as $key ) {
+					if ( 0 === strpos( $key, 'oauth_' . $environment . '_' ) ) {
+						unset( $value[ $key ] );
+					}
+				}
+				$value = array_merge( $value, $tokens );
+			}
+		}
+		return $value;
 	}
 
 	/**
@@ -114,9 +126,7 @@ final class Settings {
 	 * @return void
 	 */
 	public function set_secret( string $key, string $plain ): void {
-		$all         = $this->all();
-		$all[ $key ] = $this->secrets->encrypt( $plain );
-		update_option( self::OPTION, $all );
+		$this->update( array(), array( $key => $plain ) );
 	}
 
 	/**
@@ -130,19 +140,76 @@ final class Settings {
 	 * @return void
 	 */
 	public function update( array $values, array $secrets = array(), array $remove = array() ): void {
-		$all = $this->all();
-		foreach ( $values as $key => $value ) {
-			$all[ $key ] = $value;
-		}
-		foreach ( $secrets as $key => $plain ) {
-			if ( '' !== $plain ) {
-				$all[ $key ] = $this->secrets->encrypt( $plain );
+		foreach ( array( 'test', 'live' ) as $environment ) {
+			$prefix = 'oauth_' . $environment . '_';
+			$keys   = array_filter(
+				array_unique( array_merge( array_keys( $values ), array_keys( $secrets ), $remove ) ),
+				static function ( $key ) use ( $prefix ) {
+					return 0 === strpos( $key, $prefix );
+				}
+			);
+			if ( array() === $keys ) {
+				continue;
+			}
+			$lock = Lock::owned( 'tokens:' . $environment ) ? null : new Lock( 'tokens:' . $environment );
+			try {
+				$this->reload();
+				$all    = $this->all();
+				$tokens = array_filter(
+					$all,
+					static function ( $key ) use ( $prefix ) {
+						return 0 === strpos( $key, $prefix );
+					},
+					ARRAY_FILTER_USE_KEY
+				);
+				foreach ( $keys as $key ) {
+					if ( isset( $values[ $key ] ) ) {
+						$tokens[ $key ] = $values[ $key ];
+					}
+					if ( ! empty( $secrets[ $key ] ) ) {
+						$tokens[ $key ] = $this->seal( $secrets[ $key ] );
+					}
+					if ( in_array( $key, $remove, true ) ) {
+						unset( $tokens[ $key ] );
+					}
+					unset( $values[ $key ], $secrets[ $key ] );
+				}
+				$remove = array_values( array_diff( $remove, $keys ) );
+				update_option( 'bitsnap_oauth_tokens_' . $environment, $tokens, false );
+			} finally {
+				if ( null !== $lock ) {
+					$lock->release();
+				}
 			}
 		}
-		foreach ( $remove as $key ) {
-			unset( $all[ $key ] );
+		if ( array() === $values && array() === $secrets && array() === $remove ) {
+			return;
 		}
-		update_option( self::OPTION, $all );
+		$lock = new Lock( 'settings' );
+		try {
+			$this->reload();
+			$all = get_option( self::OPTION, array() );
+			foreach ( $values as $key => $value ) {
+				$all[ $key ] = $value;
+			}
+			foreach ( $secrets as $key => $plain ) {
+				if ( '' !== $plain ) {
+					$all[ $key ] = $this->seal( $plain );
+				}
+			}
+			foreach ( $remove as $key ) {
+				unset( $all[ $key ] );
+			}
+			// Once migrated, legacy copies must never be used or retained.
+			foreach ( array_keys( $all ) as $key ) {
+				if ( preg_match( '/^oauth_(test|live)_/', $key, $match ) && is_array( get_option( 'bitsnap_oauth_tokens_' . $match[1], null ) ) ) {
+					unset( $all[ $key ] );
+				}
+			}
+			update_option( self::OPTION, $all );
+		} finally {
+			$lock->release();
+		}
 	}
 
 	/**
@@ -154,6 +221,8 @@ final class Settings {
 	public function reload(): void {
 		wp_cache_delete( 'alloptions', 'options' );
 		wp_cache_delete( self::OPTION, 'options' );
+		wp_cache_delete( 'bitsnap_oauth_tokens_test', 'options' );
+		wp_cache_delete( 'bitsnap_oauth_tokens_live', 'options' );
 	}
 
 	/**

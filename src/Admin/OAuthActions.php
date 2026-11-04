@@ -158,7 +158,13 @@ final class OAuthActions {
 		} catch ( \Throwable $e ) {
 			$webhook = Registrar::FAILED;
 		}
-		$revoked = $this->plugin->oauth()->disconnect( $environment );
+		try {
+			$revoked = $this->plugin->oauth()->disconnect( $environment );
+		} catch ( \Throwable $e ) {
+			$revoked = false;
+		} finally {
+			$this->plugin->settings()->update( array(), array(), array( 'webhook_id_' . $environment, 'webhook_secret_' . $environment ) );
+		}
 
 		if ( Registrar::FAILED === $webhook || ! $revoked ) {
 			Notices::flash( 'warning', __( 'Disconnected this store from Bitsnap, but Bitsnap did not confirm that the webhook was deleted and access revoked. Check "Connected apps" in your Bitsnap settings.', 'bitsnap-for-woocommerce' ) );
