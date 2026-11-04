@@ -61,17 +61,17 @@ jobs:
 
       - name: Deploy to WordPress.org
         id: deploy
-        uses: 10up/action-wordpress-plugin-deploy@stable
+        uses: 10up/action-wordpress-plugin-deploy@54bd289b8525fd23a5c365ec369185f2966529c2 # stable
         with:
           generate-zip: true
+          # A tag publishes; a manual run publishes only when dry run is off.
+          dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run == true }}
         env:
           SVN_USERNAME: ${{ secrets.SVN_USERNAME }}
           SVN_PASSWORD: ${{ secrets.SVN_PASSWORD }}
           SLUG: bitsnap-for-woocommerce
           VERSION: ${{ steps.version.outputs.version }}
           ASSETS_DIR: .wordpress-org
-          # A tag always publishes. A manual run publishes only when "dry run" is turned off.
-          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run == true }}
 
       - name: Keep the zip as a workflow artifact
         uses: actions/upload-artifact@v4
